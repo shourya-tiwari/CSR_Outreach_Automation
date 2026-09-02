@@ -1,10 +1,11 @@
 """
 database.py
 ------------
-Production data-access layer for A Ray of Hope Foundation's
+SQLite data-access layer for A Ray of Hope Foundation's
 CSR Corporate Outreach & Lead Tracker.
 
-Backing store: SQLite (file: csr_tracker.db)
+Backing store: SQLite (file path configured via config.DB_PATH,
+defaults to csr_tracker.db)
 """
 
 import sqlite3
@@ -14,7 +15,7 @@ from typing import Optional, List, Dict, Any
 
 import pandas as pd
 
-DB_PATH = "csr_tracker.db"
+from config import DB_PATH, LEAD_STATUSES, STATUS_WIN_PROBABILITY
 
 
 # ----------------------------------------------------------------------------
@@ -39,8 +40,8 @@ def get_connection():
 # ----------------------------------------------------------------------------
 # SCHEMA SETUP
 # ----------------------------------------------------------------------------
-def init_db():
-    """Create tables if they do not already exist."""
+def init_db() -> None:
+    """Create tables and indexes if they do not already exist."""
     with get_connection() as conn:
         cur = conn.cursor()
 
@@ -54,6 +55,7 @@ def init_db():
                 contact_person      TEXT,
                 designation         TEXT,
                 email               TEXT,
+                phone               TEXT,
                 linkedin_url        TEXT,
                 csr_budget_lakhs    REAL,
                 target_grant_lakhs  REAL,
@@ -61,7 +63,8 @@ def init_db():
                 last_contacted_date TEXT,
                 financial_year      TEXT,
                 status              TEXT DEFAULT 'New Lead',
-                last_notes          TEXT
+                last_notes          TEXT,
+                created_at          TEXT DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -80,124 +83,10 @@ def init_db():
             """
         )
 
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_companies_zone ON companies(zone)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_companies_status ON companies(status)")
         cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_companies_zone ON companies(zone)"
-        )
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_companies_status ON companies(status)"
-        )
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_logs_company_id "
-            "ON interaction_logs(company_id)"
-        )
-
-
-# ----------------------------------------------------------------------------
-# SEED DATA
-# ----------------------------------------------------------------------------
-def seed_data(force: bool = False):
-    """
-    Populate `companies` with verified contact records for Pune corporates.
-
-    Args:
-        force: if True, wipes existing rows before reseeding.
-    """
-    init_db()
-
-    with get_connection() as conn:
-        cur = conn.cursor()
-
-        if force:
-            cur.execute("DELETE FROM interaction_logs")
-            cur.execute("DELETE FROM companies")
-
-        cur.execute("SELECT COUNT(*) AS cnt FROM companies")
-        if cur.fetchone()["cnt"] > 0 and not force:
-            return  # already seeded
-
-        seed_rows = [
-            (
-                "Bharat Forge Ltd", "Chakan", "Skill Development & Primary Education",
-                "Tejaswini Chaudhari", "Company Secretary & Compliance Officer",
-                "tejaswini.chaudhari@bharatforge.com", "https://www.linkedin.com/company/bharat-forge/",
-                700.0, 15.0, 0.20, None, "FY25-26", "New Lead",
-                "Public CSR policy names primary education and skill development as core focus areas.",
-            ),
-            (
-                "Infosys Ltd", "Hinjawadi Phase 1", "Digital Education (Infosys Springboard)",
-                "Infosys Foundation Desk", "CSR Program Manager",
-                "foundation@infosys.com", "https://www.linkedin.com/company/infosys/",
-                350.0, 20.0, 0.20, None, "FY25-26", "New Lead",
-                "Infosys Foundation runs Springboard digital literacy programs nationally.",
-            ),
-            (
-                "Tata Motors Ltd", "Pimpri", "Vocational Training & Child Education",
-                "Bapusaheb Bhadale", "Nodal CSR Officer",
-                "b.bhadale@tatamotors.com", "https://www.linkedin.com/company/tata-motors/",
-                250.0, 12.0, 0.20, None, "FY25-26", "New Lead",
-                "Tata Motors CSR includes skilling and education around its Pimpri-Chinchwad plant.",
-            ),
-            (
-                "Cummins India Ltd", "Kharadi", "Community Education & Skilling",
-                "Harmeet Mehra", "CSR Communications Leader",
-                "indiacr@cummins.com", "https://www.linkedin.com/company/cummins/",
-                180.0, 15.0, 0.25, None, "FY25-26", "New Lead",
-                "Cummins India Foundation is active in Pune community education initiatives from Kharadi.",
-            ),
-            (
-                "Persistent Systems Ltd", "Hinjawadi Phase 1", "Digital Literacy & STEM Scholarships",
-                "Persistent Foundation Desk", "Lead CSR Executive",
-                "core_foundation@persistent.com", "https://www.linkedin.com/company/persistent-systems/",
-                90.0, 10.0, 0.20, None, "FY25-26", "New Lead",
-                "Persistent Foundation focuses on digital literacy and education technology access.",
-            ),
-            (
-                "Synechron Technologies", "Kharadi", "Primary Education & STEM",
-                "Tanveer Saulat", "Corporate Lead",
-                "tanveer.saulat@synechron.com", "https://www.linkedin.com/company/synechron/",
-                40.0, 8.0, 0.15, None, "FY25-26", "New Lead",
-                "Synechron's EON Kharadi campus contact for educational program outreach.",
-            ),
-            (
-                "Thermax Ltd", "Chinchwad", "Community Learning Centers",
-                "Thermax Foundation Desk", "Head - Thermax Foundation",
-                "csg@thermaxglobal.com", "https://www.linkedin.com/company/thermax-limited/",
-                150.0, 12.0, 0.20, None, "FY25-26", "New Lead",
-                "Thermax Foundation runs community development and learning-center programs.",
-            ),
-            (
-                "Tech Mahindra Ltd", "Hinjawadi Phase 3", "Tech-Enabled Education",
-                "Tech Mahindra Foundation Pune", "Regional CSR Manager",
-                "pune@techmahindrafoundation.org", "https://www.linkedin.com/company/tech-mahindra/",
-                200.0, 15.0, 0.20, None, "FY25-26", "New Lead",
-                "Tech Mahindra Foundation supports tech-for-education initiatives.",
-            ),
-            (
-                "Eaton India", "Kharadi", "Education & Child Welfare",
-                "Pratik Shah", "Innovation & CSR Lead",
-                "PratikShah@Eaton.com", "https://www.linkedin.com/company/eaton-corporation/",
-                60.0, 10.0, 0.20, None, "FY25-26", "New Lead",
-                "Eaton India's Kharadi office contact for education and child welfare initiatives.",
-            ),
-            (
-                "Wipro Ltd", "Hinjawadi Phase 2", "Primary Education Quality",
-                "Samir Gadgil", "Wipro Cares Pune Head",
-                "admin.wiprofoundation@wipro.com", "https://www.linkedin.com/company/wipro/",
-                400.0, 18.0, 0.20, None, "FY25-26", "New Lead",
-                "Wipro Foundation's Applied Education program targets primary education quality.",
-            ),
-        ]
-
-        cur.executemany(
-            """
-            INSERT INTO companies (
-                company_name, zone, csr_focus, contact_person, designation,
-                email, linkedin_url, csr_budget_lakhs, target_grant_lakhs,
-                win_probability, last_contacted_date, financial_year,
-                status, last_notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            seed_rows,
+            "CREATE INDEX IF NOT EXISTS idx_logs_company_id ON interaction_logs(company_id)"
         )
 
 
@@ -205,12 +94,28 @@ def seed_data(force: bool = False):
 # CORE CRUD HELPERS
 # ----------------------------------------------------------------------------
 def get_all_companies() -> List[Dict[str, Any]]:
-    """Return every company row as a list of dicts."""
+    """Return every company row as a list of dicts, most recent first."""
     init_db()
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM companies ORDER BY id ASC")
         return [dict(row) for row in cur.fetchall()]
+
+
+def get_all_companies_df() -> pd.DataFrame:
+    """Convenience wrapper returning companies as a pandas DataFrame."""
+    rows = get_all_companies()
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "id", "company_name", "zone", "csr_focus", "contact_person",
+                "designation", "email", "phone", "linkedin_url",
+                "csr_budget_lakhs", "target_grant_lakhs", "win_probability",
+                "last_contacted_date", "financial_year", "status",
+                "last_notes", "created_at",
+            ]
+        )
+    return pd.DataFrame(rows)
 
 
 def get_company_by_id(company_id: int) -> Optional[Dict[str, Any]]:
@@ -228,30 +133,38 @@ def add_company(
     contact_person: str,
     designation: str,
     email: str,
-    linkedin_url: str,
+    phone: str = "",
+    linkedin_url: str = "",
     status: str = "New Lead",
     notes: str = "",
     csr_budget_lakhs: Optional[float] = None,
     target_grant_lakhs: Optional[float] = None,
-    win_probability: float = 0.20,
+    win_probability: Optional[float] = None,
     financial_year: str = "FY25-26",
 ) -> int:
     """Insert a new company record. Returns the new row's id."""
     init_db()
+
+    if win_probability is None:
+        win_probability = STATUS_WIN_PROBABILITY.get(status, 0.20)
+
+    if status not in LEAD_STATUSES:
+        status = "New Lead"
+
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             """
             INSERT INTO companies (
                 company_name, zone, csr_focus, contact_person, designation,
-                email, linkedin_url, csr_budget_lakhs, target_grant_lakhs,
+                email, phone, linkedin_url, csr_budget_lakhs, target_grant_lakhs,
                 win_probability, last_contacted_date, financial_year,
                 status, last_notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 company_name, zone, csr_focus, contact_person, designation,
-                email, linkedin_url, csr_budget_lakhs, target_grant_lakhs,
+                email, phone, linkedin_url, csr_budget_lakhs, target_grant_lakhs,
                 win_probability, None, financial_year, status, notes,
             ),
         )
@@ -262,7 +175,12 @@ def add_company(
 
 
 def update_company_status(company_id: int, new_status: str, notes: str = "") -> None:
-    """Update a company's status/notes and log the change."""
+    """Update a company's status/notes, refresh its win probability, and log the change."""
+    if new_status not in LEAD_STATUSES:
+        raise ValueError(f"Invalid status: {new_status}")
+
+    new_win_probability = STATUS_WIN_PROBABILITY.get(new_status, 0.20)
+
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -270,19 +188,43 @@ def update_company_status(company_id: int, new_status: str, notes: str = "") -> 
             UPDATE companies
             SET status = ?,
                 last_notes = ?,
+                win_probability = ?,
                 last_contacted_date = ?
             WHERE id = ?
             """,
-            (new_status, notes, date.today().isoformat(), company_id),
+            (new_status, notes, new_win_probability, date.today().isoformat(), company_id),
         )
         if cur.rowcount == 0:
             raise ValueError(f"No company found with id={company_id}")
 
-    log_interaction(
-        company_id,
-        f"Status changed to '{new_status}'",
-        notes,
-    )
+    log_interaction(company_id, f"Status changed to '{new_status}'", notes)
+
+
+def update_company(company_id: int, **fields) -> None:
+    """Generic partial-update for any subset of editable columns."""
+    if not fields:
+        return
+
+    allowed_cols = {
+        "company_name", "zone", "csr_focus", "contact_person", "designation",
+        "email", "phone", "linkedin_url", "csr_budget_lakhs",
+        "target_grant_lakhs", "win_probability", "last_contacted_date",
+        "financial_year", "status", "last_notes",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed_cols}
+    if not updates:
+        return
+
+    set_clause = ", ".join(f"{col} = ?" for col in updates)
+    values = list(updates.values()) + [company_id]
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE companies SET {set_clause} WHERE id = ?", values)
+        if cur.rowcount == 0:
+            raise ValueError(f"No company found with id={company_id}")
+
+    log_interaction(company_id, "Record Updated", f"Fields changed: {list(updates.keys())}")
 
 
 def delete_company(company_id: int) -> None:
@@ -331,12 +273,26 @@ def get_interaction_history(company_id: int) -> List[Dict[str, Any]]:
 # ----------------------------------------------------------------------------
 REQUIRED_BULK_COLUMNS = [
     "company_name", "zone", "csr_focus", "contact_person",
-    "designation", "email", "linkedin_url",
+    "designation", "email",
+]
+
+OPTIONAL_BULK_COLUMNS = [
+    "phone", "linkedin_url", "csr_budget_lakhs", "target_grant_lakhs",
+    "win_probability", "financial_year", "status", "last_notes",
 ]
 
 
 def bulk_insert_companies(df: pd.DataFrame) -> Dict[str, Any]:
-    """Bulk-insert companies from a DataFrame."""
+    """
+    Bulk-insert companies from a DataFrame (e.g. an uploaded CSV).
+
+    Required columns: company_name, zone, csr_focus, contact_person,
+    designation, email.
+    Optional columns: phone, linkedin_url, csr_budget_lakhs,
+    target_grant_lakhs, win_probability, financial_year, status, last_notes.
+
+    Returns a summary dict: {"inserted": int, "skipped": int, "errors": [...]}.
+    """
     init_db()
 
     missing_cols = [c for c in REQUIRED_BULK_COLUMNS if c not in df.columns]
@@ -345,39 +301,52 @@ def bulk_insert_companies(df: pd.DataFrame) -> Dict[str, Any]:
 
     inserted = 0
     skipped = 0
-    errors = []
+    errors: List[str] = []
 
     with get_connection() as conn:
         cur = conn.cursor()
         for idx, row in df.iterrows():
             try:
-                if not str(row.get("company_name", "")).strip():
+                company_name = str(row.get("company_name", "")).strip()
+                if not company_name:
                     skipped += 1
                     continue
+
+                status = row.get("status", "New Lead")
+                if status not in LEAD_STATUSES:
+                    status = "New Lead"
+
+                win_probability = row.get("win_probability")
+                needs_default = win_probability is None or (
+                    isinstance(win_probability, float) and pd.isna(win_probability)
+                )
+                if needs_default:
+                    win_probability = STATUS_WIN_PROBABILITY.get(status, 0.20)
 
                 cur.execute(
                     """
                     INSERT INTO companies (
                         company_name, zone, csr_focus, contact_person,
-                        designation, email, linkedin_url, csr_budget_lakhs,
-                        target_grant_lakhs, win_probability,
+                        designation, email, phone, linkedin_url,
+                        csr_budget_lakhs, target_grant_lakhs, win_probability,
                         last_contacted_date, financial_year, status, last_notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        row.get("company_name"),
+                        company_name,
                         row.get("zone"),
                         row.get("csr_focus"),
                         row.get("contact_person"),
                         row.get("designation"),
                         row.get("email"),
-                        row.get("linkedin_url"),
+                        row.get("phone", ""),
+                        row.get("linkedin_url", ""),
                         row.get("csr_budget_lakhs"),
                         row.get("target_grant_lakhs"),
-                        row.get("win_probability", 0.20),
+                        win_probability,
                         None,
                         row.get("financial_year", "FY25-26"),
-                        row.get("status", "New Lead"),
+                        status,
                         row.get("last_notes", ""),
                     ),
                 )
@@ -407,5 +376,4 @@ def bulk_insert_companies(df: pd.DataFrame) -> Dict[str, Any]:
 # ----------------------------------------------------------------------------
 if __name__ == "__main__":
     init_db()
-    seed_data(force=True)
-    print("Database initialized and seeded with contact entries.")
+    print(f"Database initialized at {DB_PATH}")

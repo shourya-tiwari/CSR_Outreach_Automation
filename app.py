@@ -1,404 +1,594 @@
-import re
-import urllib.parse
-from datetime import datetime, timedelta
+"""
+app.py
+-------
+Main Streamlit application for A Ray of Hope Foundation's CSR Corporate
+Outreach & Lead Tracker.
 
-import numpy as np
+Wires together the five backend modules:
+    config.py              - static reference data, validation, env config
+    database.py             - SQLite data-access layer
+    compliance_engine.py    - CSR-1/80G/12A badges, Q4 urgency, pipeline/impact math
+    scraper.py               - live web scraping of corporate contact pages
+    enrichment.py            - MCA master-data parsing + Hunter/Apollo enrichment
+
+Layout:
+    Sidebar   - compliance badges + Q4 urgency status
+    Tab 1     - Directory & SLA Tracker
+    Tab 2     - Scraper & Pitch Generator
+    Tab 3     - Visual Analytics (Plotly)
+"""
+
+from __future__ import annotations
+
+import re
+import io
+import urllib.parse
+from datetime import date, datetime
+from typing import Optional
+
+import streamlit as st
 import pandas as pd
-import pdfplumber
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
 
+import config
 import database as db
-from modules import compliance_engine as ce
+import compliance_engine as ce
+import scraper
+import enrichment
 
-# ----------------------------------------------------------------------------
-# CONSTANTS & CONFIGURATION
-# ----------------------------------------------------------------------------
-FUNNEL_STAGES = ["New Lead", "Contacted", "In Discussion", "Pitch Sent", "Funded"]
-SLA_TRIGGER_STATUSES = {"Contacted", "Pitch Sent"}
-SLA_THRESHOLD_DAYS = 14
+# ============================================================================
+# PAGE CONFIG
+# ============================================================================
+st.set_page_config(page_title=config.APP_NAME, page_icon=config.APP_ICON, layout="wide")
 
-ZONE_PROXIMITY_SCORES = {
-    "Hinjawadi": 95,
-    "Kharadi": 95,
-    "Baner": 90,
-    "Wakad": 88,
-    "Viman Nagar": 85,
-    "Pimpri": 82,
-    "Chinchwad": 80,
-    "Bhosari MIDC": 78,
-    "Chakan": 65,
-    "Talegaon": 60,
-    "Ranjangaon": 55,
+db.init_db()
+
+
+# ============================================================================
+# DATA LOADING (cached, invalidated after any write)
+# ============================================================================
+@st.cache_data(ttl=15, show_spinner=False)
+def load_companies_df() -> pd.DataFrame:
+    return db.get_all_companies_df()
+
+
+def refresh_and_rerun():
+    st.cache_data.clear()
+    st.rerun()
+
+
+# ============================================================================
+# HEURISTIC SCORING HELPERS (local to the UI layer — not business-critical math)
+# ============================================================================
+
+# Approximate straight-line distance (km) from central Pune to each target
+# zone, used ONLY to rank outreach priority. These are illustrative
+# estimates for relative sorting, not surveyed/geocoded distances — swap in
+# real geocoding (e.g. a Maps API) if precise figures are ever needed.
+_ZONE_APPROX_DISTANCE_KM = {
+    "Hinjawadi Phase 1": 18, "Hinjawadi Phase 2": 20, "Hinjawadi Phase 3": 22,
+    "Kharadi (EON IT Park)": 12, "Bhosari MIDC": 15, "Chakan Industrial Area": 28,
+    "Pimpri-Chinchwad": 16, "Magarpatta": 8, "Viman Nagar": 9, "Baner": 12,
 }
-DEFAULT_PROXIMITY_SCORE = 40
+_DEFAULT_ZONE_DISTANCE_KM = 25  # fallback for unmapped/scraped zone strings
 
-CSR_FOCUS_OPTIONS = [
-    "Education", "Healthcare", "Skill Development", "Scholarship", "Livelihood", "Other"
-]
+# CSR focus areas most directly aligned with the NGO's core mission
+_CORE_FOCUS_AREAS = {
+    "Primary Education & Literacy", "Child Welfare & Nutrition",
+    "Community Learning Centers", "School Infrastructure", "Girl Child Education",
+}
+_SECONDARY_FOCUS_AREAS = {
+    "Digital Literacy / EdTech", "STEM Education",
+    "Special Needs / Inclusive Education", "Teacher Training & Capacity Building",
+}
 
-KEYWORDS = [
-    "Education", "Unspent CSR", "Allocation", "Scholarship", "Pune",
-    "Skill Development", "Healthcare", "Livelihood",
-]
 
-MONEY_PATTERN = re.compile(
-    r'(?:₹|Rs\.?|INR)\s?[\d,]+(?:\.\d+)?\s?(?:Lakh|Lakhs|Crore|Crores)?',
-    re.IGNORECASE,
-)
+def compute_proximity_score(zone: str, csr_focus: str) -> int:
+    """
+    Heuristic 0-100 lead-priority score blending geographic proximity to
+    Pune (logistics ease) and CSR-focus alignment with the NGO's mission.
+    This is a prioritization aid for the outreach team, not a precise metric.
+    """
+    distance_km = _ZONE_APPROX_DISTANCE_KM.get(zone, _DEFAULT_ZONE_DISTANCE_KM)
+    distance_score = max(0, 100 - distance_km * 2.5)
 
-# ----------------------------------------------------------------------------
-# PAGE SETUP & COMPLIANCE BADGES
-# ----------------------------------------------------------------------------
-st.set_page_config(
-    page_title="A Ray of Hope Foundation - CSR Portal",
-    page_icon="🤝",
-    layout="wide",
-)
+    if csr_focus in _CORE_FOCUS_AREAS:
+        focus_score = 100
+    elif csr_focus in _SECONDARY_FOCUS_AREAS:
+        focus_score = 75
+    else:
+        focus_score = 50
 
-try:
-    db.init_db()
-    db.seed_data()
-except Exception:
-    pass
+    return round(0.5 * distance_score + 0.5 * focus_score)
 
-# Render Sidebar Statutory Credentials & Top-Page Urgency Banner
-ce.render_csr1_compliance_badge(location="sidebar")
-q4_alert = ce.render_march31_alert()
 
-st.title("A Ray of Hope Foundation — CSR Corporate Outreach Portal")
-st.markdown(
-    "Track, manage, and grow corporate partnerships across Pune to fund education programs."
-)
-
-# ----------------------------------------------------------------------------
-# DATA ENGINE LOADERS
-# ----------------------------------------------------------------------------
-@st.cache_data(ttl=5)
-def load_companies() -> pd.DataFrame:
-    raw_data = db.get_all_companies()
-    df = pd.DataFrame(raw_data) if not isinstance(raw_data, pd.DataFrame) else raw_data.copy()
-
-    if df.empty:
-        return pd.DataFrame(columns=[
-            "id", "company_name", "zone", "csr_focus", "contact_person",
-            "designation", "email", "linkedin_url", "csr_budget_lakhs",
-            "target_grant_lakhs", "win_probability", "last_contacted_date",
-            "financial_year", "status", "last_notes"
-        ])
-
-    # Normalize defaults & data types
-    df["target_grant_lakhs"] = df["target_grant_lakhs"].fillna(10.0).astype(float)
-    df["csr_budget_lakhs"] = df["csr_budget_lakhs"].fillna(100.0).astype(float)
-    df["win_probability"] = df["win_probability"].fillna(0.20).astype(float)
-    
-    # Process dates for SLA tracking
-    now = datetime.now()
-    df["last_contacted_date"] = pd.to_datetime(df["last_contacted_date"]).fillna(now)
-
-    return df
-
-def refresh_data():
-    load_companies.clear()
-
-df = load_companies()
-
-# ----------------------------------------------------------------------------
-# CORE COMPUTATIONAL HELPERS
-# ----------------------------------------------------------------------------
-def compute_sla_flag(row: pd.Series, today: datetime = None) -> pd.Series:
-    today = today or datetime.now()
-    last_contact = pd.to_datetime(row["last_contacted_date"])
-    days_since = (today - last_contact).days
-
-    is_overdue = (row["status"] in SLA_TRIGGER_STATUSES) and (days_since > SLA_THRESHOLD_DAYS)
-    badge = "⚠️ Follow-up Overdue" if is_overdue else "✅ On Track"
-    return pd.Series({"days_since_contact": days_since, "is_overdue": is_overdue, "sla_badge": badge})
-
-def compute_proximity_score(zone: str) -> int:
-    return ZONE_PROXIMITY_SCORES.get(zone, DEFAULT_PROXIMITY_SCORE)
-
-def enrich_lead_data(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    df = df.copy()
-    sla_fields = df.apply(compute_sla_flag, axis=1)
-    df = pd.concat([df, sla_fields], axis=1)
-    df["proximity_score"] = df["zone"].apply(compute_proximity_score)
-    return df
-
-def extract_pdf_insights(uploaded_file):
-    insights = {"keyword_hits": {}, "raw_snippets": [], "amounts_found": []}
+def days_since(date_str: Optional[str]) -> Optional[int]:
+    """Days elapsed since a stored ISO date string. None if unset/unparseable."""
+    if not date_str or not isinstance(date_str, str):
+        return None
     try:
-        full_text = ""
-        with pdfplumber.open(uploaded_file) as pdf:
-            for page in pdf.pages:
-                full_text += (page.extract_text() or "") + "\n"
+        d = datetime.fromisoformat(date_str.split("T")[0]).date()
+        return (date.today() - d).days
+    except ValueError:
+        return None
+
+
+SLA_BREACH_DAYS = 14  # flag active leads with no contact in this many days
+
+
+# ============================================================================
+# SIDEBAR — Compliance badges + Q4 urgency
+# ============================================================================
+def render_sidebar():
+    st.sidebar.markdown(f"## {config.APP_ICON} {config.ORG_NAME}")
+    st.sidebar.caption(f"{config.ORG_CITY} · CSR Corporate Outreach Portal")
+
+    st.sidebar.markdown("### 📋 Statutory Compliance")
+    for badge in ce.get_compliance_badges():
+        st.sidebar.markdown(badge.render_markdown())
+
+    st.sidebar.divider()
+
+    st.sidebar.markdown("### ⏰ Financial Year Status")
+    urgency = ce.calculate_q4_urgency()
+    urgency_render = urgency.render_markdown()
+
+    if urgency.level == "critical":
+        st.sidebar.error(urgency_render)
+    elif urgency.level == "high":
+        st.sidebar.warning(urgency_render)
+    elif urgency.level == "moderate":
+        st.sidebar.info(urgency_render)
+    else:
+        st.sidebar.success(urgency_render)
+
+    if urgency.level in ("critical", "high"):
+        st.sidebar.caption(
+            "Section 135(5): unspent CSR funds not tied to an ongoing project "
+            "must transfer to a Schedule VII fund if not spent by FY close — "
+            "use this window to push pending pitches."
+        )
+
+
+# ============================================================================
+# TAB 1 — Directory & SLA Tracker
+# ============================================================================
+def render_directory_tab():
+    st.subheader("📇 Corporate Lead Directory")
+
+    df = load_companies_df()
+    if df.empty:
+        st.info("No leads yet. Add companies via the Scraper tab or your seed script.")
+        return
+
+    # --- Filters -------------------------------------------------------
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        zone_filter = st.selectbox("Zone", config.ZONE_FILTER_OPTIONS, key="zone_filter")
+    with col2:
+        status_filter = st.selectbox("Status", ["All"] + config.LEAD_STATUSES, key="status_filter")
+    with col3:
+        search_query = st.text_input(
+            "🔎 Search company or contact name", key="lead_search", placeholder="e.g. Infosys, Priya Nair"
+        )
+
+    filtered = df.copy()
+    if zone_filter != "All":
+        filtered = filtered[filtered["zone"] == zone_filter]
+    if status_filter != "All":
+        filtered = filtered[filtered["status"] == status_filter]
+    if search_query:
+        q = search_query.strip().lower()
+        filtered = filtered[
+            filtered["company_name"].astype(str).str.lower().str.contains(q, na=False)
+            | filtered["contact_person"].astype(str).str.lower().str.contains(q, na=False)
+        ]
+
+    if filtered.empty:
+        st.warning("No leads match the current filters.")
+        return
+
+    # --- Derived columns -------------------------------------------------
+    filtered["proximity_score"] = filtered.apply(
+        lambda r: compute_proximity_score(r.get("zone", ""), r.get("csr_focus", "")), axis=1
+    )
+    filtered["days_since_contact"] = filtered["last_contacted_date"].apply(days_since)
+    filtered["sla_flag"] = filtered.apply(
+        lambda r: "⚠️ SLA Breach"
+        if (
+            r["status"] in config.ACTIVE_PIPELINE_STATUSES
+            and (r["days_since_contact"] is None or r["days_since_contact"] > SLA_BREACH_DAYS)
+        )
+        else "✅ On track",
+        axis=1,
+    )
+    filtered["email_link"] = filtered["email"].apply(lambda e: f"mailto:{e}" if e else "")
+    if "phone" not in filtered.columns:
+        filtered["phone"] = ""
+    filtered["phone_link"] = filtered["phone"].apply(lambda p: f"tel:{p}" if p else "")
+
+    display_cols = [
+        "id", "company_name", "zone", "csr_focus", "contact_person", "designation",
+        "email_link", "phone_link", "status", "proximity_score",
+        "days_since_contact", "sla_flag",
+    ]
+    display_cols = [c for c in display_cols if c in filtered.columns]
+
+    st.dataframe(
+        filtered[display_cols].sort_values("proximity_score", ascending=False),
+        width='stretch',
+        hide_index=True,
+        column_config={
+            "id": st.column_config.NumberColumn("ID", width="small"),
+            "company_name": st.column_config.TextColumn("Company"),
+            "zone": st.column_config.TextColumn("Zone"),
+            "csr_focus": st.column_config.TextColumn("CSR Focus"),
+            "contact_person": st.column_config.TextColumn("Contact"),
+            "designation": st.column_config.TextColumn("Designation"),
+            "email_link": st.column_config.LinkColumn("Email", display_text=r"mailto:(.*)"),
+            "phone_link": st.column_config.LinkColumn("Phone", display_text=r"tel:(.*)"),
+            "status": st.column_config.TextColumn("Status"),
+            "proximity_score": st.column_config.ProgressColumn(
+                "Priority Score", min_value=0, max_value=100, format="%d"
+            ),
+            "days_since_contact": st.column_config.NumberColumn("Days Since Contact"),
+            "sla_flag": st.column_config.TextColumn("SLA"),
+        },
+    )
+
+    st.caption(
+        f"{len(filtered)} lead(s) shown · Priority Score blends zone proximity to Pune "
+        f"and CSR-focus alignment (heuristic, for prioritization only)."
+    )
+
+    st.divider()
+
+    # --- Status update form ----------------------------------------------
+    st.markdown("#### ✏️ Update Lead Status")
+    with st.form("status_update_form", clear_on_submit=True):
+        lead_options = {
+            f"{row.id} — {row.company_name} ({row.status})": row.id
+            for row in filtered.itertuples()
+        }
+        selected_label = st.selectbox("Select lead", list(lead_options.keys()))
+        new_status = st.selectbox("New status", config.LEAD_STATUSES)
+        notes = st.text_area("Notes", placeholder="What happened in this interaction?")
+        submitted = st.form_submit_button("Update Status", type="primary")
+
+        if submitted:
+            company_id = lead_options[selected_label]
+            try:
+                db.update_company_status(company_id, new_status, notes)
+                st.success(f"Updated lead #{company_id} to '{new_status}'.")
+                refresh_and_rerun()
+            except ValueError as e:
+                st.error(str(e))
+
+
+# ============================================================================
+# TAB 2 — Scraper & Pitch Generator
+# ============================================================================
+
+def render_scraper_tab():
+    st.subheader("🕸️ Live Scraper")
+    st.caption(
+        "Crawls a company's public /csr, /sustainability, and /contact-us pages "
+        "for emails, phone numbers, and LinkedIn URLs, then adds a qualified lead."
+    )
+
+    with st.form("scraper_form"):
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            target_name = st.text_input("Company name", placeholder="e.g. Persistent Systems")
+            target_zone = st.selectbox("Zone", config.PUNE_ZONES)
+        with sc2:
+            target_url = st.text_input("Website URL", placeholder="https://www.example.com")
+            target_focus = st.selectbox("CSR Focus", config.CSR_FOCUS_AREAS)
+
+        run_scrape = st.form_submit_button("🕷️ Run Scraper", type="primary")
+
+    if run_scrape:
+        if not target_name or not target_url:
+            st.error("Company name and URL are required.")
+        else:
+            with st.spinner(f"Crawling {target_url}... this respects robots.txt and rate limits, so it may take a moment."):
+                summary = scraper.run_scraper(
+                    [{"company_name": target_name, "url": target_url,
+                      "zone": target_zone, "csr_focus": target_focus}],
+                    default_zone=target_zone,
+                    default_csr_focus=target_focus,
+                )
+            st.json(summary)
+            if summary["inserted"] > 0:
+                st.success(f"Added {target_name} to the pipeline.")
+                refresh_and_rerun()
+            elif summary["skipped_duplicate"] > 0:
+                st.warning("This domain is already in your database.")
+            else:
+                st.info("No public contact details were found on the crawled pages.")
+
+    st.divider()
+
+    # --- Enrichment ---------------------------------------------------
+    st.markdown("#### 🔍 Enrich a Domain (Hunter.io / Apollo.io)")
+    st.caption("Finds verified names/emails for CSR Manager, Company Secretary, etc. Requires an API key set as an environment variable.")
+    enrich_col1, enrich_col2 = st.columns([3, 1])
+    with enrich_col1:
+        enrich_domain_input = st.text_input("Company domain", placeholder="e.g. persistent.com", key="enrich_domain")
+    with enrich_col2:
+        provider = st.selectbox("Provider", ["hunter", "apollo"], label_visibility="collapsed")
+
+    if st.button("Find CSR Contacts"):
+        if not enrich_domain_input:
+            st.error("Enter a domain first.")
+        else:
+            try:
+                with st.spinner("Querying enrichment provider..."):
+                    contacts = enrichment.enrich_domain(enrich_domain_input, prefer=provider)
+                if contacts:
+                    contacts_df = pd.DataFrame([c.__dict__ for c in contacts])
+                    st.dataframe(contacts_df, width='stretch', hide_index=True)
+                else:
+                    st.info("No matching CSR-relevant contacts found for this domain.")
+            except EnvironmentError as e:
+                st.error(str(e))
+
+    st.divider()
+
+    # --- PDF annual report keyword parser -------------------------------
+    st.markdown("#### 📄 Annual Report Keyword Scanner")
+    st.caption("Upload a company's Annual Report PDF to surface CSR budget mentions and relevant passages.")
+
+    uploaded_pdf = st.file_uploader("Upload Annual Report (PDF)", type=["pdf"])
+    if uploaded_pdf is not None:
+        with st.spinner("Extracting text..."):
+            findings = scan_pdf_for_csr_keywords(uploaded_pdf)
+
+        if findings["error"]:
+            st.error(findings["error"])
+        else:
+            st.write(f"**Pages scanned:** {findings['page_count']}")
+            m1, m2 = st.columns(2)
+            m1.metric("CSR mentions", findings["keyword_counts"].get("csr", 0))
+            m2.metric("Currency amounts found", len(findings["money_mentions"]))
+
+            if findings["money_mentions"]:
+                st.markdown("**Budget-related figures found:**")
+                st.write(", ".join(findings["money_mentions"][:20]))
+
+            if findings["matched_sentences"]:
+                with st.expander(f"View {len(findings['matched_sentences'])} matching passages"):
+                    for sentence in findings["matched_sentences"][:25]:
+                        st.markdown(f"- {sentence}")
+            else:
+                st.info("No CSR-related passages detected.")
+
+    st.divider()
+
+    # --- Pitch generator --------------------------------------------------
+    render_pitch_generator()
+
+
+CSR_KEYWORDS = [
+    "csr", "corporate social responsibility", "section 135", "schedule vii",
+    "underprivileged", "education", "community development", "csr-1",
+    "unspent csr", "csr committee",
+]
+
+
+def scan_pdf_for_csr_keywords(uploaded_file) -> dict:
+    """Extracts text from an uploaded PDF and surfaces CSR-relevant
+    passages and currency figures. Returns a results dict; never raises."""
+    result = {"error": None, "page_count": 0, "keyword_counts": {}, "money_mentions": [], "matched_sentences": []}
+
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        result["error"] = "pypdf is not installed. Run: pip install pypdf"
+        return result
+
+    try:
+        reader = PdfReader(io.BytesIO(uploaded_file.getvalue()))
+        result["page_count"] = len(reader.pages)
+        full_text = "\n".join((page.extract_text() or "") for page in reader.pages)
     except Exception as e:
-        st.error(f"Could not parse PDF: {e}")
-        return insights
+        result["error"] = f"Could not read PDF: {e}"
+        return result
 
     if not full_text.strip():
-        st.warning("No extractable text found in PDF.")
-        return insights
+        result["error"] = "No extractable text found — this may be a scanned/image-only PDF."
+        return result
 
-    for kw in KEYWORDS:
-        matches = [m.start() for m in re.finditer(re.escape(kw), full_text, re.IGNORECASE)]
-        if matches:
-            insights["keyword_hits"][kw] = len(matches)
-            first_idx = matches[0]
-            snippet = full_text[max(0, first_idx - 80): first_idx + 120].replace("\n", " ").strip()
-            insights["raw_snippets"].append(f"[{kw}] ...{snippet}...")
+    lower_text = full_text.lower()
+    result["keyword_counts"] = {"csr": lower_text.count("csr")}
 
-    insights["amounts_found"] = sorted(set(MONEY_PATTERN.findall(full_text)))[:15]
-    return insights
+    # Currency figures using the same money pattern style as config.py
+    money_pattern = re.compile(
+        r"₹\s?[\d,]+(?:\.\d+)?\s?(?:lakhs?|crores?|cr|l)\b", re.IGNORECASE
+    )
+    result["money_mentions"] = sorted(set(m.group(0).strip() for m in money_pattern.finditer(full_text)))
 
-# ----------------------------------------------------------------------------
-# MAIN TABS ARCHITECTURE
-# ----------------------------------------------------------------------------
-tab1, tab2, tab3 = st.tabs(["📋 Lead Directory & SLA Tracker", "✉️ Custom Pitch Generator", "📊 Visual Analytics"])
+    sentences = re.split(r"(?<=[.!?])\s+", full_text)
+    result["matched_sentences"] = [
+        s.strip().replace("\n", " ")
+        for s in sentences
+        if any(k in s.lower() for k in CSR_KEYWORDS) and 20 < len(s.strip()) < 400
+    ]
 
-# ============================================================================
-# TAB 1: LEAD DIRECTORY & SLA TRACKER
-# ============================================================================
-with tab1:
-    enriched_df = enrich_lead_data(df)
-    
-    if enriched_df.empty:
-        st.info("No corporate leads in the database.")
+    return result
+
+
+def render_pitch_generator():
+    st.markdown("#### ✉️ Pitch Draft Generator")
+
+    df = load_companies_df()
+    manual_entry = "— Enter manually —"
+    options = [manual_entry] + (
+        [f"{r.id} — {r.company_name}" for r in df.itertuples()] if not df.empty else []
+    )
+    selection = st.selectbox("Recipient", options)
+
+    if selection != manual_entry:
+        row = df[df["id"] == int(selection.split(" — ")[0])].iloc[0]
+        recipient_name = row.get("contact_person") or "Team"
+        recipient_email = row.get("email") or ""
+        recipient_company = row.get("company_name")
     else:
-        overdue_count = int(enriched_df["is_overdue"].sum())
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Leads", len(enriched_df))
-        col2.metric("⚠️ Follow-ups Overdue", overdue_count)
-        col3.metric("Avg. Pune Proximity Score", f"{enriched_df['proximity_score'].mean():.0f}%")
-        col4.metric("Weighted Pipeline Yield", f"₹{ce.calculate_weighted_pipeline(enriched_df):.1f}L")
+        pc1, pc2 = st.columns(2)
+        with pc1:
+            recipient_name = st.text_input("Recipient name", value="Team")
+            recipient_company = st.text_input("Company name")
+        with pc2:
+            recipient_email = st.text_input("Recipient email")
 
-        st.divider()
+    grant_ask_lakhs = st.number_input("Grant ask (₹ Lakhs)", min_value=0.5, value=10.0, step=0.5)
 
-        col_filter, col_main = st.columns([1, 3])
+    impact = ce.estimate_impact(grant_ask_lakhs)
+    urgency = ce.calculate_q4_urgency()
 
-        with col_filter:
-            st.subheader("🔍 Filters")
-            zones = ["All"] + sorted(enriched_df["zone"].unique().tolist())
-            selected_zone = st.selectbox("Zone", zones)
-            
-            selected_status = st.selectbox("Status", ["All"] + FUNNEL_STAGES)
-            overdue_only = st.checkbox("Show Overdue Only", value=False)
-            search_term = st.text_input("Search Company / Contact")
-
-            if st.button("🔄 Refresh Data", use_container_width=True):
-                refresh_data()
-                st.rerun()
-
-        filtered_df = enriched_df.copy()
-        if selected_zone != "All":
-            filtered_df = filtered_df[filtered_df["zone"] == selected_zone]
-        if selected_status != "All":
-            filtered_df = filtered_df[filtered_df["status"] == selected_status]
-        if overdue_only:
-            filtered_df = filtered_df[filtered_df["is_overdue"]]
-        if search_term:
-            term = search_term.strip().lower()
-            filtered_df = filtered_df[
-                filtered_df["company_name"].str.lower().str.contains(term, na=False)
-                | filtered_df["contact_person"].str.lower().str.contains(term, na=False)
-            ]
-
-        with col_main:
-            st.subheader("📋 Corporate Directory")
-
-            def highlight_overdue(row):
-                is_ov = row.get("sla_badge") == "⚠️ Follow-up Overdue"
-                return ["background-color: #ffe1e1" if is_ov else ""] * len(row)
-
-            display_cols = [
-                "id", "company_name", "zone", "status", "sla_badge",
-                "days_since_contact", "proximity_score", "target_grant_lakhs"
-            ]
-
-            styled = (
-                filtered_df[display_cols]
-                .style
-                .apply(highlight_overdue, axis=1)
-                .format({
-                    "target_grant_lakhs": "₹{:.0f}L",
-                    "proximity_score": "{}%",
-                })
-            )
-            st.dataframe(styled, use_container_width=True, hide_index=True)
-
-            # Lead Update Form
-            st.markdown("---")
-            st.markdown("**Update Lead Status**")
-            id_to_name = dict(zip(filtered_df["id"], filtered_df["company_name"]))
-            
-            if id_to_name:
-                selected_id = st.selectbox("Select Company", options=list(id_to_name.keys()), format_func=lambda x: f"{x} - {id_to_name[x]}")
-                current_status = filtered_df.loc[filtered_df["id"] == selected_id, "status"].values[0]
-                
-                with st.form("update_lead_form"):
-                    new_status = st.selectbox("New Status", options=FUNNEL_STAGES, index=FUNNEL_STAGES.index(current_status) if current_status in FUNNEL_STAGES else 0)
-                    update_notes = st.text_area("Quick Notes", placeholder="Add progress notes...")
-                    if st.form_submit_button("💾 Save Update"):
-                        try:
-                            db.update_company_status(selected_id, new_status, update_notes)
-                            st.success(f"Updated status to '{new_status}'!")
-                            refresh_data()
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Failed to update lead: {e}")
-
-# ============================================================================
-# TAB 2: CUSTOM PITCH GENERATOR & COMPLIANCE ENGINE
-# ============================================================================
-with tab2:
-    st.subheader("Custom CSR Pitch Generator & Grant Calculator")
-
-    c_left, c_right = st.columns([1, 1])
-
-    with c_left:
-        st.markdown("**1. Document Intelligence (Optional)**")
-        uploaded_file = st.file_uploader("Upload CSR Annual Report or BRSR (PDF)", type=["pdf"])
-        pdf_insights = None
-        if uploaded_file is not None:
-            with st.spinner("Extracting insights..."):
-                pdf_insights = extract_pdf_insights(uploaded_file)
-            if pdf_insights["keyword_hits"]:
-                st.success("Keywords Found: " + ", ".join(pdf_insights["keyword_hits"].keys()))
-
-        st.markdown("**2. Recipient Information**")
-        company_names = df["company_name"].tolist() if not df.empty else []
-        selected_company_name = st.selectbox("Select Existing Lead", options=["Custom Lead"] + company_names)
-
-        if selected_company_name != "Custom Lead":
-            row = df[df["company_name"] == selected_company_name].iloc[0]
-            comp_name = row["company_name"]
-            contact_name = row.get("contact_person", "")
-            contact_email = row.get("email", "")
-            csr_focus = row.get("csr_focus", "Education")
-            grant_val = float(row.get("target_grant_lakhs", 10.0))
-        else:
-            comp_name = st.text_input("Company Name")
-            contact_name = st.text_input("Contact Person")
-            contact_email = st.text_input("Email")
-            csr_focus = st.selectbox("CSR Focus Area", CSR_FOCUS_OPTIONS)
-            grant_val = 10.0
-
-        st.markdown("**3. Grant Impact Model**")
-        grant_ask = st.slider("Grant Request (₹ Lakhs)", min_value=1.0, max_value=50.0, value=grant_val)
-        
-        # Calculate impact metrics using modules/compliance_engine
-        impact = ce.calculate_impact_metrics(grant_ask)
-        st.info(f"💡 Impact: {impact.pitch_summary}")
-
-    with c_right:
-        st.markdown("**Generated Pitch Draft**")
-        
-        pitch_urgency = q4_alert.pitch_urgency_line if q4_alert.is_q4 else ""
-        
-        subject = f"CSR Partnership Proposal — {csr_focus} | A Ray of Hope Foundation"
-        body = f"""Dear {contact_name or 'Sir/Madam'},
-
-I hope this email finds you well.
-
-I am reaching out on behalf of A Ray of Hope Foundation regarding {comp_name}'s CSR focus on {csr_focus}. 
-
-{q4_alert.pitch_prefix}{impact.pitch_summary} {pitch_urgency}
-
-Statutory Compliance Credentials:
-- MCA Form CSR-1 Reg No: {ce.NGO_CREDENTIALS['csr1_reg_no']}
-- 80G Tax Exemption Certificate: {ce.NGO_CREDENTIALS['80g_cert_id']}
-
-We would welcome a brief 15-minute call to share our detailed impact proposal.
-
-Warm regards,
-A Ray of Hope Foundation Team
-Pune, Maharashtra
-"""
-        st.text_input("Subject", value=subject)
-        edited_body = st.text_area("Body", value=body, height=320)
-
-        if contact_email:
-            mailto_link = (
-                f"mailto:{urllib.parse.quote(contact_email)}"
-                f"?subject={urllib.parse.quote(subject)}"
-                f"&body={urllib.parse.quote(edited_body)}"
-            )
-            st.link_button("📤 Open in Local Mail Client", mailto_link, use_container_width=True)
-
-        if st.button("✅ Mark as Pitch Sent & Log Activity", use_container_width=True):
-            if selected_company_name != "Custom Lead":
-                c_id = df[df["company_name"] == selected_company_name].iloc[0]["id"]
-                db.update_company_status(c_id, "Pitch Sent", f"Pitch sent for ₹{grant_ask}L ask.")
-                st.success(f"Updated status for {selected_company_name} to 'Pitch Sent'!")
-                refresh_data()
-                st.rerun()
-
-# ============================================================================
-# TAB 3: VISUAL ANALYTICS
-# ============================================================================
-with tab3:
-    st.subheader("📊 Visual Analytics & Pipeline Forecast")
-
-    if df.empty:
-        st.info("No analytics data available.")
-    else:
-        col_analytics_1, col_analytics_2 = st.columns([1.1, 1])
-
-        with col_analytics_1:
-            # Conversion Funnel Chart
-            stage_index = {s: i for i, s in enumerate(FUNNEL_STAGES)}
-            temp_df = df.copy()
-            temp_df["stage_idx"] = temp_df["status"].map(stage_index).fillna(0)
-
-            counts = [int((temp_df["stage_idx"] >= i).sum()) for i in range(len(FUNNEL_STAGES))]
-
-            fig_funnel = go.Figure(
-                go.Funnel(
-                    y=FUNNEL_STAGES,
-                    x=counts,
-                    textposition="inside",
-                    textinfo="value+percent initial",
-                    marker={"color": ["#0B5FFF", "#3D7EFF", "#6FA0FF", "#A3C4FF", "#1FA774"]},
-                )
-            )
-            fig_funnel.update_layout(title="Lead Conversion Funnel", height=380)
-            st.plotly_chart(fig_funnel, use_container_width=True)
-
-        with col_analytics_2:
-            # Pipeline Gauge Chart
-            active = df[df["status"] != "Funded"]
-            raw_total = active["target_grant_lakhs"].sum()
-            weighted_total = (active["target_grant_lakhs"] * active["win_probability"]).sum()
-
-            fig_gauge = go.Figure(
-                go.Indicator(
-                    mode="gauge+number+delta",
-                    value=weighted_total,
-                    number={"prefix": "₹", "suffix": "L", "valueformat": ".1f"},
-                    delta={"reference": raw_total, "relative": False, "valueformat": ".1f"},
-                    title={"text": "Weighted Pipeline Yield vs Raw Target (₹ Lakhs)"},
-                    gauge={
-                        "axis": {"range": [0, max(raw_total, 1) * 1.1]},
-                        "bar": {"color": "#0B5FFF"},
-                    },
-                )
-            )
-            fig_gauge.update_layout(height=380)
-            st.plotly_chart(fig_gauge, use_container_width=True)
-
-        st.divider()
-
-        # Zone Distribution Bar Chart
-        zone_counts = df.groupby("zone", as_index=False)["target_grant_lakhs"].sum()
-        fig_zone = px.bar(
-            zone_counts,
-            x="zone",
-            y="target_grant_lakhs",
-            color="zone",
-            labels={"target_grant_lakhs": "Target Grant Ask (₹ Lakhs)", "zone": "Zone"},
-            title="CSR Target Ask Distribution by Pune Industrial Zone",
+    urgency_line = ""
+    if urgency.level in ("critical", "high"):
+        urgency_line = (
+            f"\n\nWith {urgency.days_remaining} days left in {urgency.fy_label}, deploying this "
+            f"now ensures your CSR budget reaches these children directly rather than lapsing "
+            f"to a Schedule VII fund under Section 135(5)."
         )
-        st.plotly_chart(fig_zone, use_container_width=True)
+
+    default_subject = f"Partnership Proposal: {config.ORG_NAME} x {recipient_company or '[Company]'}"
+    default_body = (
+        f"Dear {recipient_name},\n\n"
+        f"I'm reaching out on behalf of {config.ORG_NAME}, a CSR-1 registered NGO in "
+        f"{config.ORG_CITY} focused on educating underprivileged children.\n\n"
+        f"A grant of ₹{grant_ask_lakhs:g} Lakh would support an estimated "
+        f"{impact.estimated_children_reached} children for a full year of schooling, "
+        f"learning materials, and nutrition support.{urgency_line}\n\n"
+        f"I'd welcome the chance to share our program details and impact reports at your "
+        f"convenience.\n\n"
+        f"Warm regards,\nOutreach Team\n{config.ORG_NAME}"
+    )
+
+    subject = st.text_input("Subject", value=default_subject)
+    body = st.text_area("Email body (editable)", value=default_body, height=280)
+
+    if recipient_email:
+        mailto_url = (
+            f"mailto:{recipient_email}"
+            f"?subject={urllib.parse.quote(subject)}"
+            f"&body={urllib.parse.quote(body)}"
+        )
+        st.link_button("✉️ Open in Email Client", mailto_url)
+    else:
+        st.caption("Enter a recipient email to generate a mailto: link.")
+
+
+# ============================================================================
+# TAB 3 — Visual Analytics
+# ============================================================================
+def render_analytics_tab():
+    st.subheader("📊 Visual Analytics")
+
+    df = load_companies_df()
+    if df.empty:
+        st.info("No data yet — analytics will appear once leads are added.")
+        return
+
+    companies = df.to_dict("records")
+    summary = ce.calculate_pipeline_summary(companies)
+    impact = ce.calculate_total_impact(companies)
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Leads", summary.total_leads)
+    m2.metric("Active Pipeline", summary.active_leads)
+    m3.metric("Weighted Pipeline (₹L)", summary.weighted_pipeline_lakhs)
+    m4.metric("Children Reached (Funded)", impact["estimated_children_reached"])
+
+    col_a, col_b = st.columns(2)
+
+    # --- Funnel chart ------------------------------------------------
+    with col_a:
+        funnel_order = [
+            "New Lead", "Contacted", "In Discussion", "Proposal Sent",
+            "Pitch Sent", "Due Diligence", "Funded",
+        ]
+        funnel_counts = [int((df["status"] == s).sum()) for s in funnel_order]
+
+        fig_funnel = go.Figure(
+            go.Funnel(y=funnel_order, x=funnel_counts, textinfo="value+percent initial")
+        )
+        fig_funnel.update_layout(title="Lead Conversion Funnel", height=420)
+        st.plotly_chart(fig_funnel, width='stretch')
+
+    # --- Gauge: weighted pipeline vs target --------------------------
+    with col_b:
+        target_lakhs = st.number_input(
+            "Annual fundraising target (₹ Lakhs)", min_value=10.0, value=500.0, step=10.0
+        )
+        fig_gauge = go.Figure(
+            go.Indicator(
+                mode="gauge+number+delta",
+                value=summary.weighted_pipeline_lakhs,
+                delta={"reference": target_lakhs},
+                title={"text": "Weighted Pipeline Yield vs Target (₹ Lakhs)"},
+                gauge={
+                    "axis": {"range": [0, max(target_lakhs * 1.2, summary.weighted_pipeline_lakhs * 1.1, 1)]},
+                    "bar": {"color": "darkgreen"},
+                    "threshold": {
+                        "line": {"color": "red", "width": 3},
+                        "thickness": 0.8,
+                        "value": target_lakhs,
+                    },
+                },
+            )
+        )
+        fig_gauge.update_layout(height=420)
+        st.plotly_chart(fig_gauge, width='stretch')
+
+    # --- Bar chart: CSR ask by zone ------------------------------------
+    zone_summary = (
+        df.groupby("zone", dropna=False)["target_grant_lakhs"]
+        .sum(min_count=1)
+        .fillna(0)
+        .reset_index()
+        .sort_values("target_grant_lakhs", ascending=False)
+    )
+    fig_bar = px.bar(
+        zone_summary, x="zone", y="target_grant_lakhs",
+        title="CSR Target Ask by Pune Industrial Zone (₹ Lakhs)",
+        labels={"zone": "Zone", "target_grant_lakhs": "Target Ask (₹L)"},
+    )
+    fig_bar.update_layout(height=420, xaxis_tickangle=-30)
+    st.plotly_chart(fig_bar, width='stretch')
+
+    st.caption(
+        f"Conversion rate: {summary.conversion_rate_pct}% · "
+        f"Funded to date: ₹{summary.funded_lakhs}L · "
+        f"Est. cost/child: ₹{impact['cost_per_child_inr']:,.0f}/yr"
+    )
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
+def main():
+    render_sidebar()
+
+    st.title(f"{config.APP_ICON} {config.APP_NAME}")
+    st.caption(f"{config.ORG_NAME} · {config.ORG_CITY} · {ce.compliance_summary_line()}")
+
+    tab1, tab2, tab3 = st.tabs([
+        "📇 Directory & SLA Tracker",
+        "🕸️ Scraper & Pitch Generator",
+        "📊 Visual Analytics",
+    ])
+
+    with tab1:
+        render_directory_tab()
+    with tab2:
+        render_scraper_tab()
+    with tab3:
+        render_analytics_tab()
+
+
+if __name__ == "__main__":
+    main()
