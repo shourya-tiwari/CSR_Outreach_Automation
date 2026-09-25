@@ -1,11 +1,49 @@
 """Pydantic request/response schemas."""
 
 from datetime import date, datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
 from .models import LeadStatus
+
+
+# ----------------------------------------------------------------------------
+# AI features (Phase 3: lead scoring + Gemini-generated content)
+# ----------------------------------------------------------------------------
+class LeadScore(BaseModel):
+    score: int
+    priority: str
+    factors: dict[str, int]
+
+
+class ScoreExplanation(BaseModel):
+    configured: bool
+    explanation: Optional[str] = None
+
+
+class EmailType(str, Enum):
+    FIRST_OUTREACH = "first_outreach"
+    FOLLOW_UP = "follow_up"
+    MEETING_REQUEST = "meeting_request"
+    THANK_YOU = "thank_you"
+
+
+class GenerateEmailRequest(BaseModel):
+    email_type: EmailType
+    contact_id: Optional[int] = None
+
+
+class GeneratedEmail(BaseModel):
+    configured: bool
+    subject: Optional[str] = None
+    body: Optional[str] = None
+
+
+class AITextResult(BaseModel):
+    configured: bool
+    text: Optional[str] = None
 
 
 # ----------------------------------------------------------------------------
@@ -119,6 +157,7 @@ class CompanyListItem(CompanyBase):
     status: LeadStatus
     follow_up_date: Optional[date] = None
     contact_count: int = 0
+    lead_score: Optional[LeadScore] = None
 
 
 class CompanyDetail(CompanyBase):
@@ -132,3 +171,4 @@ class CompanyDetail(CompanyBase):
     updated_at: datetime
     contacts: list[ContactOut] = []
     notes: list[NoteOut] = []
+    lead_score: Optional[LeadScore] = None

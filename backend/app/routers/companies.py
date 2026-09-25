@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..database import get_db
+from ..scoring import compute_lead_score
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
@@ -16,6 +17,12 @@ def _get_company_or_404(db: Session, company_id: int) -> models.Company:
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
+
+
+def _to_detail(company: models.Company) -> schemas.CompanyDetail:
+    detail = schemas.CompanyDetail.model_validate(company)
+    detail.lead_score = schemas.LeadScore(**compute_lead_score(company))
+    return detail
 
 
 @router.get("", response_model=list[schemas.CompanyListItem])
@@ -55,7 +62,7 @@ def list_companies(
     )
     return [
         schemas.CompanyListItem.model_validate(
-            {**c.__dict__, "contact_count": len(c.contacts)}
+            {**c.__dict__, "contact_count": len(c.contacts), "lead_score": compute_lead_score(c)}
         )
         for c in companies
     ]
@@ -76,18 +83,18 @@ def create_company(
                     "existing_company_name": duplicate.name,
                 },
             )
-    return crud.create_company(db, payload)
+    return _to_detail(crud.create_company(db, payload))
 
 
 @router.get("/{company_id}", response_model=schemas.CompanyDetail)
 def get_company(company_id: int, db: Session = Depends(get_db)):
-    return _get_company_or_404(db, company_id)
+    return _to_detail(_get_company_or_404(db, company_id))
 
 
 @router.patch("/{company_id}", response_model=schemas.CompanyDetail)
 def update_company(company_id: int, payload: schemas.CompanyUpdate, db: Session = Depends(get_db)):
     company = _get_company_or_404(db, company_id)
-    return crud.update_company(db, company, payload)
+    return _to_detail(crud.update_company(db, company, payload))
 
 
 @router.delete("/{company_id}", status_code=204)
