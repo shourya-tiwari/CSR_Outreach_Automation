@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { listCompanies, createCompany } from "../api/client";
+import { listCompanies, createCompany, exportCompaniesUrl, importCompaniesCsv } from "../api/client";
 import CompanyFilters from "../components/CompanyFilters";
 import CompanyForm from "../components/CompanyForm";
 import StatusBadge from "../components/StatusBadge";
@@ -15,6 +15,9 @@ export default function CompaniesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef(null);
 
   const updateFilters = (newFilters) => {
     setFilters(newFilters);
@@ -39,6 +42,24 @@ export default function CompaniesPage() {
     listCompanies({ ...filters, skip: page * PAGE_SIZE, limit: PAGE_SIZE }).then(setCompanies);
   };
 
+  const handleImportFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const result = await importCompaniesCsv(file);
+      setImportResult(result);
+      updateFilters({});
+    } catch (err) {
+      setImportResult({ created: 0, skipped_duplicates: 0, errors: [err.message] });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <header className="mb-6 flex items-center justify-between">
@@ -48,13 +69,36 @@ export default function CompaniesPage() {
             Search for companies suitable for CSR outreach.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700"
-        >
-          + Add company
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href={exportCompaniesUrl(filters)}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Export CSV
+          </a>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+          >
+            {importing ? "Importing…" : "Import CSV"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700"
+          >
+            + Add company
+          </button>
+        </div>
       </header>
 
       <div className="mb-6">
@@ -63,6 +107,37 @@ export default function CompaniesPage() {
 
       {error && (
         <p className="mb-4 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</p>
+      )}
+
+      {importResult && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-700">
+              Import complete: <strong>{importResult.created}</strong> created,{" "}
+              <strong>{importResult.skipped_duplicates}</strong> duplicate(s) skipped
+              {importResult.errors.length > 0 && (
+                <>
+                  , <strong>{importResult.errors.length}</strong> row(s) with errors
+                </>
+              )}
+              .
+            </span>
+            <button
+              type="button"
+              onClick={() => setImportResult(null)}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              ✕
+            </button>
+          </div>
+          {importResult.errors.length > 0 && (
+            <ul className="mt-2 list-inside list-disc text-xs text-rose-600">
+              {importResult.errors.map((message, i) => (
+                <li key={i}>{message}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

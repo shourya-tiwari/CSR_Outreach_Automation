@@ -105,3 +105,37 @@ export function generateCompanySummary(companyId) {
 export function generateMeetingBrief(companyId) {
   return request(`/companies/${companyId}/meeting-brief`, { method: "POST" });
 }
+
+export function getDashboard() {
+  return request("/dashboard");
+}
+
+export function exportCompaniesUrl(filters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, value);
+    }
+  });
+  const query = params.toString();
+  return `${BASE_URL}/companies/export${query ? `?${query}` : ""}`;
+}
+
+export async function importCompaniesCsv(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${BASE_URL}/companies/import`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      detail = (await response.json()).detail ?? detail;
+    } catch {
+      // no JSON body
+    }
+    throw new Error(typeof detail === "string" ? detail : response.statusText);
+  }
+  return response.json();
+}
