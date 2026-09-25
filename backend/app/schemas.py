@@ -9,6 +9,27 @@ from .models import LeadStatus
 
 
 # ----------------------------------------------------------------------------
+# Discovery (Phase 2: scraping / enrichment candidates)
+# ----------------------------------------------------------------------------
+class ScrapedContact(BaseModel):
+    name: Optional[str] = None
+    designation: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    source_url: Optional[str] = None
+
+
+class ScrapeResult(BaseModel):
+    contacts: list[ScrapedContact]
+
+
+class EnrichResult(BaseModel):
+    configured: bool
+    contacts: list[ScrapedContact]
+
+
+# ----------------------------------------------------------------------------
 # Contact
 # ----------------------------------------------------------------------------
 class ContactBase(BaseModel):

@@ -1,4 +1,4 @@
-"""FastAPI entrypoint for the CSR Outreach backend (Phase 1: core application)."""
+"""FastAPI entrypoint for the CSR Outreach backend."""
 
 from contextlib import asynccontextmanager
 
@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import models  # noqa: F401 - import registers models on Base.metadata
 from .config import settings
 from .database import Base, engine
-from .routers import companies, contacts, notes
+from .routers import companies, contacts, discovery, notes
 
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ app.add_middleware(
 app.include_router(companies.router)
 app.include_router(contacts.router)
 app.include_router(notes.router)
+app.include_router(discovery.router)
 
 
 @app.get("/api/health")

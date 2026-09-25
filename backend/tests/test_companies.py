@@ -1,10 +1,12 @@
 def _create_company(client, **overrides):
+    name = overrides.get("name", "Acme Industries")
+    slug = name.lower().replace(" ", "-")
     payload = {
-        "name": "Acme Industries",
+        "name": name,
         "industry": "Manufacturing",
         "city": "Pune",
         "state": "Maharashtra",
-        "website": "https://acme.example.com",
+        "website": f"https://{slug}.example.com",
         "csr_focus": "Education",
         "csr_spending": 5_000_000,
         "revenue": 500_000_000,

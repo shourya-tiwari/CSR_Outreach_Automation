@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://csr_user:csr_password@localhost:5432/csr_outreach"
     cors_origins: str = "http://localhost:5173"
+    hunter_api_key: str = ""
+    apollo_api_key: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

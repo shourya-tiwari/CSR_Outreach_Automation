@@ -1,5 +1,6 @@
 """Data-access functions (CRUD) for companies, contacts, and notes."""
 
+import re
 from typing import Optional
 
 from sqlalchemy.orm import Session, joinedload
@@ -7,9 +8,41 @@ from sqlalchemy.orm import Session, joinedload
 from . import models, schemas
 
 
+def _normalize_domain(website: str) -> str:
+    if not website:
+        return ""
+    normalized = website.strip().lower()
+    normalized = re.sub(r"^https?://", "", normalized)
+    normalized = re.sub(r"^www\.", "", normalized)
+    return normalized.rstrip("/")
+
+
 # ----------------------------------------------------------------------------
 # Companies
 # ----------------------------------------------------------------------------
+def find_duplicate_company(
+    db: Session, name: str, website: Optional[str]
+) -> Optional[models.Company]:
+    """Best-effort duplicate check by case-insensitive name or website match.
+
+    Fine at this tool's scale (a single NGO's outreach list, not a
+    bulk data warehouse) - see docs/PROJECT_OVERVIEW.md's "keep
+    infrastructure simple" principle.
+    """
+    name_match = (
+        db.query(models.Company).filter(models.Company.name.ilike(name.strip())).first()
+    )
+    if name_match:
+        return name_match
+
+    target_domain = _normalize_domain(website) if website else ""
+    if target_domain:
+        for company in db.query(models.Company).filter(models.Company.website.isnot(None)).all():
+            if _normalize_domain(company.website) == target_domain:
+                return company
+    return None
+
+
 def create_company(db: Session, payload: schemas.CompanyCreate) -> models.Company:
     company = models.Company(**payload.model_dump())
     db.add(company)

@@ -62,7 +62,20 @@ def list_companies(
 
 
 @router.post("", response_model=schemas.CompanyDetail, status_code=201)
-def create_company(payload: schemas.CompanyCreate, db: Session = Depends(get_db)):
+def create_company(
+    payload: schemas.CompanyCreate, force: bool = False, db: Session = Depends(get_db)
+):
+    if not force:
+        duplicate = crud.find_duplicate_company(db, payload.name, payload.website)
+        if duplicate is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "A company with this name or website already exists.",
+                    "existing_company_id": duplicate.id,
+                    "existing_company_name": duplicate.name,
+                },
+            )
     return crud.create_company(db, payload)
 
 
