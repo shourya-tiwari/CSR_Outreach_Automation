@@ -84,10 +84,60 @@ pages' emails/phone/LinkedIn were correctly extracted. Duplicate
 detection, scrape, and enrich were all exercised over real HTTP through
 the dev proxy. `npm run build` and `oxlint` clean on the frontend.
 
-## Phase 3 — AI Features — ⬜ Not started
+## Phase 3 — AI Features — ✅ Complete
 
-No lead scoring or email generation exists in `backend/`/`frontend/`
-yet.
+Provider decision (made explicitly with the user, not drifted into):
+**Google Gemini**, and lead scoring is a **deterministic formula +
+LLM-written explanation** — the 0-100 number is fixed/auditable
+(`backend/app/scoring.py`), the LLM only writes the human-readable
+"why" text. All AI calls are optional: every endpoint reports
+`configured: false` when `GEMINI_API_KEY` isn't set rather than
+erroring, same pattern as Hunter/Apollo in Phase 2.
+
+- [x] **AI lead scoring** — `backend/app/scoring.py::compute_lead_score`:
+      0-100 score from CSR-focus match (0-40), CSR spending (0-30),
+      location match with the NGO's own city/state (0-15), and company
+      size (0-15) — factors from `docs/PROJECT_OVERVIEW.md` that map to
+      data actually on the `Company` record. Returned inline on every
+      `GET/POST/PATCH /api/companies...` response (list and detail) —
+      no configuration or extra request needed, matching "should
+      automatically appear on every company profile."
+- [x] **Lead priority labels** — High (≥70) / Medium (≥40) / Low,
+      derived from the score, shown as a colored badge on both the
+      company list and detail page.
+- [x] **Score explanation** — `POST /api/companies/{id}/score/explain`:
+      Gemini writes 2-3 plain-language bullets from the score
+      breakdown. Lazy (on-demand "Why?" click), not fetched
+      automatically, to avoid an LLM call on every page load.
+- [x] **AI email generator** — `POST /api/companies/{id}/generate-email`:
+      First Outreach / Follow-up / Meeting Request / Thank You variants,
+      optionally personalized to a specific contact. Draft-only per the
+      plan's rule — the UI has Generate/Regenerate/Copy buttons and an
+      editable subject/body, no send action exists anywhere in the app.
+- [x] **AI Company Summary** — `POST /api/companies/{id}/summary`:
+      business overview, CSR initiatives, NGO-fit, talking points.
+- [x] **AI Meeting Brief** — `POST /api/companies/{id}/meeting-brief`:
+      background, likely priorities, discussion points, questions,
+      collaboration ideas — includes the company's saved notes as
+      context.
+
+**Verified:** 26 new backend pytest cases (scoring formula unit tests,
+`app/ai.py` prompt/parsing unit tests with mocked Gemini responses,
+router tests for all 4 AI endpoints including the "not configured"
+path — 64 total for the backend now) — all passing. Also called the
+real Gemini API once with a deliberately invalid key to confirm the
+request reaches Google's endpoint and a failure is caught and returned
+as `None` rather than crashing (no valid `GEMINI_API_KEY` was available
+to test an actual successful generation — that path is covered by the
+mocked unit/router tests instead). Full create-company → lead-score →
+explain/generate-email/summary/meeting-brief (all correctly reporting
+`configured: false`) workflow replayed over real HTTP through the dev
+proxy. `npm run build` and `oxlint` clean on the frontend.
+
+**Known gap:** "Previous CSR activities" (the *target* company's own
+CSR track record) was in the original factor list but isn't scored —
+no structured data source for that is integrated (would need e.g. Form
+CSR-2 filings or annual reports), so it's left out rather than faked.
 
 ## Phase 4 — Outreach Tracking — ⬜ Not started
 

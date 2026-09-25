@@ -5,6 +5,49 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## 2026-09-25
 
+### Docs — `docs: update project docs for Phase 3 completion`
+
+- Marked Phase 3 (AI Features) complete in `TASKS.md` and `ROADMAP.md`,
+  recording the explicit provider decision (Google Gemini) and scoring
+  approach (deterministic formula + LLM explanation) made with the
+  user, plus verification notes.
+
+### Added — `feat: add AI lead-score explanations, email/summary/brief generation (Phase 3)`
+
+- `app/scoring.py`: deterministic 0-100 lead score from CSR-focus
+  match, CSR spending, location match with the NGO's own city/state,
+  and company size. Returned inline (`lead_score`) on every company
+  list/detail response - no separate request needed. Priority label
+  (High ≥70 / Medium ≥40 / Low) derived from the score.
+- `app/ai.py`: Google Gemini integration (`GEMINI_API_KEY`,
+  `GEMINI_MODEL`) for everything that needs an LLM - score
+  explanations, email drafts, company summaries, meeting briefs. Every
+  function returns `None`/reports `configured: false` when no key is
+  set, same graceful-degradation pattern as Hunter/Apollo in Phase 2.
+  Nothing here sends an email or takes any outreach action on its own.
+- New endpoints: `POST /api/companies/{id}/score/explain`,
+  `/generate-email` (First Outreach / Follow-up / Meeting Request /
+  Thank You, optionally personalized to a contact), `/summary`,
+  `/meeting-brief` (uses the company's saved notes as context).
+- NGO profile fields (`NGO_NAME`, `NGO_WORK_AREA`, `NGO_FOCUS_AREAS`,
+  `NGO_CITY`, `NGO_STATE`) added to `app/config.py`/`.env.example` -
+  env-configured for now; Phase 5 will turn this into a proper profile.
+- 26 new pytest cases (scoring-formula units, `ai.py` prompt/parsing
+  units with mocked Gemini responses, AI-router tests incl. the
+  "not configured" path); full backend suite now 64/64 passing.
+
+### Added — `feat: add lead score, priority badges, and AI panel to frontend`
+
+- `LeadScoreBadge.jsx`: score/priority badge on the company detail
+  header with an on-demand "Why?" explanation (not auto-fetched, to
+  avoid an LLM call on every page load).
+- `AIPanel.jsx` (`AITextCard.jsx` + `EmailGeneratorPanel.jsx`) on the
+  company detail page: Company Summary and Meeting Brief cards
+  (generate/regenerate), and an email generator with a type selector,
+  optional contact personalization, editable subject/body, and a Copy
+  button - draft-only, no send action anywhere in the app.
+- Lead Score column added to the company list table.
+
 ### Docs — `docs: update project docs for Phase 2 completion`
 
 - Marked Phase 2 (CSR Contact Discovery) complete in `TASKS.md` and

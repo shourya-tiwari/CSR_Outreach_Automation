@@ -9,7 +9,8 @@ move around.
 **Stack:** React + Tailwind (`frontend/`) + FastAPI + PostgreSQL
 (`backend/`), per explicit decision — not the Streamlit/SQLite stack in
 `legacy-streamlit-prototype/`, which is reference-only and does not
-count toward any phase below.
+count toward any phase below. AI features (Phase 3) use **Google
+Gemini**, also per explicit decision.
 
 ## Phase 1 — Core Application ✅ Complete
 
@@ -38,18 +39,22 @@ count toward any phase below.
 - [x] Hunter.io / Apollo.io enrichment lookups, surfaced in the company
       detail UI
 
-## Phase 3 — AI Features ⬜ Not started
+## Phase 3 — AI Features ✅ Complete
 
-- [ ] Lead scoring (decide: real LLM/heuristic-with-explanation, or a
-      documented rule-based score — make the call explicitly this time
-      rather than drifting into an undocumented heuristic)
-- [ ] Lead priority labels (High/Medium/Low) derived from the score
-- [ ] AI email generator (First Outreach / Follow-up / Meeting Request /
-      Thank You variants), draft-only per the plan's rule — never
-      auto-sent
-- [ ] AI Company Summary (business overview, CSR initiatives, NGO
+Decision made explicitly with the user (not drifted into): **Google
+Gemini** as the LLM provider; lead scoring is a **deterministic
+formula + LLM-written explanation**, not a fully LLM-driven score.
+
+- [x] Lead scoring — deterministic 0-100 formula (`app/scoring.py`),
+      returned inline on every company response
+- [x] Lead priority labels (High/Medium/Low) derived from the score
+- [x] AI email generator (First Outreach / Follow-up / Meeting Request /
+      Thank You variants), draft-only per the plan's rule — Copy/
+      Regenerate buttons, editable before use, never auto-sent
+- [x] AI Company Summary (business overview, CSR initiatives, NGO
       compatibility, talking points)
-- [ ] AI Meeting Brief
+- [x] AI Meeting Brief (background, priorities, discussion points,
+      questions, collaboration ideas — uses the company's saved notes)
 
 ## Phase 4 — Outreach Tracking ⬜ Not started
 
