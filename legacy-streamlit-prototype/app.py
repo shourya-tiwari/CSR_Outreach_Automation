@@ -4,12 +4,12 @@ app.py
 Main Streamlit application for A Ray of Hope Foundation's CSR Corporate
 Outreach & Lead Tracker.
 
-Wires together the five backend modules:
-    config.py              - static reference data, validation, env config
-    database.py             - SQLite data-access layer
-    compliance_engine.py    - CSR-1/80G/12A badges, Q4 urgency, pipeline/impact math
-    scraper.py               - live web scraping of corporate contact pages
-    enrichment.py            - MCA master-data parsing + Hunter/Apollo enrichment
+Wires together the five backend modules (src/):
+    src/config.py              - static reference data, validation, env config
+    src/database.py             - SQLite data-access layer
+    src/compliance_engine.py    - CSR-1/80G/12A badges, Q4 urgency, pipeline/impact math
+    src/scraper.py               - live web scraping of corporate contact pages
+    src/enrichment.py            - MCA master-data parsing + Hunter/Apollo enrichment
 
 Layout:
     Sidebar   - compliance badges + Q4 urgency status
@@ -31,11 +31,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-import config
-import database as db
-import compliance_engine as ce
-import scraper
-import enrichment
+from src import config
+from src import database as db
+from src import compliance_engine as ce
+from src import scraper
+from src import enrichment
 
 # ============================================================================
 # PAGE CONFIG

@@ -222,7 +222,7 @@ API_CONFIG = APIConfig()
 # ----------------------------------------------------------------------------
 # DATABASE CONFIG
 # ----------------------------------------------------------------------------
-DB_PATH = os.environ.get("CSR_DB_PATH", "csr_tracker.db")
+DB_PATH = os.environ.get("CSR_DB_PATH", "data/csr_tracker.db")
 
 # ----------------------------------------------------------------------------
 # COMPLIANCE / TAX REFERENCE DATA

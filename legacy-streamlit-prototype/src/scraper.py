@@ -32,8 +32,8 @@ from urllib.robotparser import RobotFileParser
 import requests
 from bs4 import BeautifulSoup
 
-from config import REGEX_PATTERNS
-from database import add_company, get_all_companies_df
+from .config import REGEX_PATTERNS
+from .database import add_company, get_all_companies_df
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("scraper")

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Dict, List, Optional, Sequence, Union
 
-from config import (
+from .config import (
     NGO_CERTIFICATIONS,
     Q4_URGENCY_THRESHOLDS,
     STATUS_WIN_PROBABILITY,

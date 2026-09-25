@@ -5,9 +5,10 @@ SQLite data-access layer for A Ray of Hope Foundation's
 CSR Corporate Outreach & Lead Tracker.
 
 Backing store: SQLite (file path configured via config.DB_PATH,
-defaults to csr_tracker.db)
+defaults to data/csr_tracker.db)
 """
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, date
@@ -15,7 +16,7 @@ from typing import Optional, List, Dict, Any
 
 import pandas as pd
 
-from config import DB_PATH, LEAD_STATUSES, STATUS_WIN_PROBABILITY
+from .config import DB_PATH, LEAD_STATUSES, STATUS_WIN_PROBABILITY
 
 
 # ----------------------------------------------------------------------------
@@ -24,6 +25,9 @@ from config import DB_PATH, LEAD_STATUSES, STATUS_WIN_PROBABILITY
 @contextmanager
 def get_connection():
     """Context-managed SQLite connection with foreign keys enabled."""
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlite3.Row
