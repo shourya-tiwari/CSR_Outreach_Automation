@@ -5,6 +5,44 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## 2026-09-25
 
+### Docs — `docs: update project docs for Phase 2 completion`
+
+- Marked Phase 2 (CSR Contact Discovery) complete in `TASKS.md` and
+  `ROADMAP.md`, with verification notes (test counts, the live
+  robots.txt/scraping check against a local test site).
+
+### Added — `feat: add contact discovery UI and duplicate-warning flow to frontend`
+
+- New `DiscoverContactsPanel.jsx` on the company detail page: "Scan
+  website" and "Enrich (Hunter/Apollo)" buttons surface candidate
+  contacts (email/phone/LinkedIn/source), each addable to the Phase 1
+  contact list after staff name them — nothing is auto-saved.
+- `CompanyForm.jsx` now handles the backend's `409` duplicate response:
+  shows the existing company's name with a "View existing" link and a
+  "Create anyway" override that resubmits with `force=true`.
+- `api/client.js`: `createCompany` accepts a `force` option; failed
+  requests now carry `status` and structured `detail` on the thrown
+  error so callers can branch on them; added `scrapeCompany` /
+  `enrichCompany`.
+
+### Added — `feat: add CSR contact discovery to backend (scraping, enrichment, duplicate detection)`
+
+- `app/scraping.py`: crawls a company's own site (home, `/contact-us`,
+  `/contact`, `/csr`, `/sustainability`, `/about/contact`) for public
+  emails, phone numbers, and LinkedIn URLs. Identifiable User-Agent,
+  `robots.txt` checked per path, fixed delay between requests, results
+  deduped across pages. `POST /api/companies/{id}/scrape`.
+- `app/enrichment.py`: Hunter.io domain-search and Apollo.io
+  people-search integrations, filtered to CSR-relevant titles. Gated
+  behind `HUNTER_API_KEY`/`APOLLO_API_KEY`; reports `configured: false`
+  when neither is set rather than silently returning nothing. `POST
+  /api/companies/{id}/enrich`.
+- `crud.py::find_duplicate_company`: case-insensitive name match or
+  normalized-website match. `POST /api/companies` now returns `409`
+  with the existing company's id/name unless `?force=true` is passed.
+- 25 new backend pytest cases (12 discovery-endpoint, 7 scraping unit,
+  6 enrichment unit); full backend suite now 38/38 passing.
+
 ### Docs — `docs: add project docs for Phase 1`
 
 - Added root `README.md` (setup/run instructions for both the backend

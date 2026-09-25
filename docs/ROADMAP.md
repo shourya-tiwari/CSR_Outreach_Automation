@@ -24,14 +24,18 @@ count toward any phase below.
 - [x] Add notes and status tracking (`Note` model + lead `status` /
       `follow_up_date` / `last_contacted_date` on `Company`)
 
-## Phase 2 — CSR Contact Discovery ⬜ Not started
+## Phase 2 — CSR Contact Discovery ✅ Complete
 
-- [ ] Add CSR decision-maker search (site crawler for `/csr`,
-      `/sustainability`, `/contact-us`, respecting `robots.txt`)
-- [ ] Add source-link tracking (already modeled: `Contact.source_url`)
-- [ ] Save discovered contacts into the Phase 1 contact database
-- [ ] Add duplicate detection (by name/website) at company-create time
-- [ ] Hunter.io / Apollo.io enrichment lookups, surfaced in the company
+- [x] Add CSR decision-maker search (site crawler for `/`, `/contact-us`,
+      `/contact`, `/csr`, `/sustainability`, `/about/contact`,
+      respecting `robots.txt`)
+- [x] Add source-link tracking (`Contact.source_url`, populated from
+      every scrape/enrichment candidate)
+- [x] Save discovered contacts into the Phase 1 contact database
+      (review-then-add via `DiscoverContactsPanel.jsx`, not auto-saved)
+- [x] Add duplicate detection (by name/website) at company-create time
+      (`409` + `?force=true` override)
+- [x] Hunter.io / Apollo.io enrichment lookups, surfaced in the company
       detail UI
 
 ## Phase 3 — AI Features ⬜ Not started

@@ -43,14 +43,46 @@ filterable but not yet shown as *optional* toggle filters in the UI
 (fine at prototype scale, `skip`/`limit` are already supported
 server-side).
 
-## Phase 2 — CSR Contact Discovery — ⬜ Not started
+## Phase 2 — CSR Contact Discovery — ✅ Complete
 
-Web scraping (`/csr`, `/sustainability`, `/contact-us` crawling),
-Hunter/Apollo enrichment, and duplicate detection need to be rebuilt
-against the new backend — none of this exists in `backend/` yet. (A
-scraper and enrichment module exist in `legacy-streamlit-prototype/`,
-but per instruction they aren't credited here — this phase starts from
-zero against the new stack.)
+- [x] **CSR decision-maker search** — `backend/app/scraping.py`:
+      crawls a company's own site (`/`, `/contact-us`, `/contact`,
+      `/csr`, `/sustainability`, `/about/contact`) for public emails,
+      phone numbers, and LinkedIn URLs. Identifiable User-Agent,
+      `robots.txt` checked per path before fetching, fixed delay
+      between requests, results deduped across pages.
+- [x] **Source-link tracking** — every discovered candidate carries the
+      `source_url` it was found on (`Contact.source_url` was already
+      modeled in Phase 1).
+- [x] **Save discovered contacts** — `frontend/src/components/
+      DiscoverContactsPanel.jsx` on the company detail page: "Scan
+      website" shows candidates, staff name each one and click "Add
+      contact" to save via the existing Phase 1 contact endpoint —
+      nothing is auto-saved without review.
+- [x] **Duplicate detection** — `backend/app/crud.py::find_duplicate_company`
+      (case-insensitive name match or normalized-website match).
+      `POST /api/companies` returns `409` with the existing company's
+      id/name unless `?force=true` is passed; the "Add company" form
+      surfaces this as a warning with a "View existing" link and a
+      "Create anyway" override.
+- [x] **Hunter.io / Apollo.io enrichment** — `backend/app/enrichment.py`:
+      domain-search/people-search integrations, filtered to CSR-relevant
+      titles (CSR/Sustainability/Foundation/HR/Corporate Communications).
+      Gated behind `HUNTER_API_KEY`/`APOLLO_API_KEY`; `POST
+      /api/companies/{id}/enrich` reports `configured: false` when
+      neither key is set, surfaced in the UI rather than silently
+      returning nothing. Same `DiscoverContactsPanel.jsx` UI as
+      scraping.
+
+**Verified:** 25 new backend pytest cases (12 discovery-endpoint tests,
+7 scraping unit tests, 6 enrichment unit tests — 38 total for the
+backend now) — all passing. The scraper was also run against a live,
+locally-hosted test site with real contact content on one page and a
+`robots.txt` `Disallow` rule on another, confirming the disallowed page
+was genuinely skipped (not just coincidentally empty) while the allowed
+pages' emails/phone/LinkedIn were correctly extracted. Duplicate
+detection, scrape, and enrich were all exercised over real HTTP through
+the dev proxy. `npm run build` and `oxlint` clean on the frontend.
 
 ## Phase 3 — AI Features — ⬜ Not started
 
@@ -79,10 +111,13 @@ timeline — none started.
 - [ ] Consider Alembic migrations once the schema needs to evolve after
       real data exists (Phase 1 uses `Base.metadata.create_all` for
       simplicity, matching the "avoid infra complexity" principle).
-- [ ] Add duplicate-detection at create time (currently absent — was
-      explicitly scoped to Phase 2 in the plan, not Phase 1).
 - [ ] Decide on auth before this goes anywhere multi-user (Phase 1 has
       none — fine for a single NGO's internal tool for now).
+- [ ] Scraper title/name extraction is currently heuristic-free: emails,
+      phones, and LinkedIn URLs are found, but not a person's name or
+      designation (staff fill that in before saving). Named-contact
+      extraction would need real HTML structure/NLP parsing, not just
+      regex — deliberately out of scope for Phase 2's MVP.
 
 See [`ROADMAP.md`](ROADMAP.md) for how these fit into upcoming phases and
 [`CHANGELOG.md`](CHANGELOG.md) for what's already shipped.
