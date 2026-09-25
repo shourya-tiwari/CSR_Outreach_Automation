@@ -5,6 +5,7 @@ import StatusBadge from "../components/StatusBadge";
 import StatusPanel from "../components/StatusPanel";
 import ContactsSection from "../components/ContactsSection";
 import NotesSection from "../components/NotesSection";
+import DiscoverContactsPanel from "../components/DiscoverContactsPanel";
 
 export default function CompanyDetailPage() {
   const { id } = useParams();
@@ -99,6 +100,7 @@ export default function CompanyDetailPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <ContactsSection companyId={company.id} contacts={company.contacts} onChanged={refresh} />
+          <DiscoverContactsPanel company={company} onChanged={refresh} />
           <NotesSection companyId={company.id} notes={company.notes} onChanged={refresh} />
         </div>
         <div>

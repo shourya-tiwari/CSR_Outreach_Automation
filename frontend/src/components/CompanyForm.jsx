@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import Modal from "./Modal";
 
 const EMPTY = {
@@ -18,34 +19,49 @@ const NUMERIC_FIELDS = new Set(["csr_spending", "revenue", "employee_count"]);
 export default function CompanyForm({ onClose, onSubmit }) {
   const [values, setValues] = useState(EMPTY);
   const [error, setError] = useState(null);
+  const [duplicate, setDuplicate] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const handleChange = (key) => (event) => {
     setValues({ ...values, [key]: event.target.value });
+    setDuplicate(null);
   };
 
-  const handleSubmit = async (event) => {
+  const buildPayload = () => {
+    const payload = { ...values };
+    for (const field of NUMERIC_FIELDS) {
+      payload[field] = payload[field] === "" ? null : Number(payload[field]);
+    }
+    for (const key of Object.keys(payload)) {
+      if (payload[key] === "") payload[key] = null;
+    }
+    return payload;
+  };
+
+  const submit = async (force) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSubmit(buildPayload(), { force });
+      setDuplicate(null);
+    } catch (err) {
+      if (err.status === 409 && err.detail?.existing_company_id) {
+        setDuplicate(err.detail);
+      } else {
+        setError(err.message);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSubmit = (event) => {
     event.preventDefault();
     if (!values.name.trim()) {
       setError("Company name is required.");
       return;
     }
-    setSaving(true);
-    setError(null);
-    try {
-      const payload = { ...values };
-      for (const field of NUMERIC_FIELDS) {
-        payload[field] = payload[field] === "" ? null : Number(payload[field]);
-      }
-      for (const key of Object.keys(payload)) {
-        if (payload[key] === "") payload[key] = null;
-      }
-      await onSubmit(payload);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
+    submit(false);
   };
 
   return (
@@ -141,6 +157,32 @@ export default function CompanyForm({ onClose, onSubmit }) {
         </div>
 
         {error && <p className="text-sm text-rose-600">{error}</p>}
+
+        {duplicate && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <p>
+              A company called <strong>{duplicate.existing_company_name}</strong> already
+              exists (same name or website).
+            </p>
+            <div className="mt-2 flex gap-3">
+              <Link
+                to={`/companies/${duplicate.existing_company_id}`}
+                onClick={onClose}
+                className="font-medium text-amber-900 hover:underline"
+              >
+                View existing company
+              </Link>
+              <button
+                type="button"
+                onClick={() => submit(true)}
+                disabled={saving}
+                className="font-medium text-amber-900 hover:underline disabled:opacity-60"
+              >
+                Create anyway
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button

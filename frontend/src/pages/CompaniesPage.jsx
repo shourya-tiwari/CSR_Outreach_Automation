@@ -24,8 +24,8 @@ export default function CompaniesPage() {
     return () => clearTimeout(timeout);
   }, [filters]);
 
-  const handleCreate = async (payload) => {
-    await createCompany(payload);
+  const handleCreate = async (payload, { force = false } = {}) => {
+    await createCompany(payload, { force });
     setShowForm(false);
     listCompanies(filters).then(setCompanies);
   };

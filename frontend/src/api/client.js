@@ -14,7 +14,11 @@ async function request(path, options = {}) {
     } catch {
       // response had no JSON body
     }
-    throw new Error(detail);
+    const message = typeof detail === "string" ? detail : (detail?.message ?? response.statusText);
+    const error = new Error(message);
+    error.status = response.status;
+    error.detail = detail;
+    throw error;
   }
 
   if (response.status === 204) return null;
@@ -36,8 +40,9 @@ export function getCompany(id) {
   return request(`/companies/${id}`);
 }
 
-export function createCompany(payload) {
-  return request(`/companies`, { method: "POST", body: JSON.stringify(payload) });
+export function createCompany(payload, { force = false } = {}) {
+  const query = force ? "?force=true" : "";
+  return request(`/companies${query}`, { method: "POST", body: JSON.stringify(payload) });
 }
 
 export function updateCompany(id, payload) {
@@ -72,4 +77,12 @@ export function addNote(companyId, body) {
 
 export function deleteNote(noteId) {
   return request(`/notes/${noteId}`, { method: "DELETE" });
+}
+
+export function scrapeCompany(companyId) {
+  return request(`/companies/${companyId}/scrape`, { method: "POST" });
+}
+
+export function enrichCompany(companyId) {
+  return request(`/companies/${companyId}/enrich`, { method: "POST" });
 }
