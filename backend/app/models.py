@@ -60,6 +60,12 @@ class Company(Base):
     notes = relationship(
         "Note", back_populates="company", cascade="all, delete-orphan", order_by="Note.created_at.desc()"
     )
+    activity_logs = relationship(
+        "ActivityLog",
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="ActivityLog.created_at.desc()",
+    )
 
 
 class Contact(Base):
@@ -90,3 +96,22 @@ class Note(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     company = relationship("Company", back_populates="notes")
+
+
+class ActivityLog(Base):
+    """Auto-recorded events for Phase 4's recent-activity feed and
+    dashboard KPIs (e.g. company added, contact added, status changed).
+    Not user-editable - written only by crud.py as a side effect of the
+    action it describes.
+    """
+
+    __tablename__ = "activity_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    event_type = Column(String(50), nullable=False)
+    description = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    company = relationship("Company", back_populates="activity_logs")

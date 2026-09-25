@@ -60,6 +60,8 @@ def generate_email(
     )
     if result is None:
         return schemas.GeneratedEmail(configured=True)
+
+    crud.log_email_generated(db, company.id, payload.email_type.value.replace("_", " ").title())
     return schemas.GeneratedEmail(configured=True, subject=result["subject"], body=result["body"])
 
 

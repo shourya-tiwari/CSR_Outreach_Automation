@@ -1,8 +1,11 @@
 """Company search, profile, and status/notes endpoints."""
 
+import csv
+import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
@@ -10,6 +13,23 @@ from ..database import get_db
 from ..scoring import compute_lead_score
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
+
+_CSV_COLUMNS = [
+    "name",
+    "industry",
+    "city",
+    "state",
+    "website",
+    "csr_focus",
+    "csr_spending",
+    "revenue",
+    "employee_count",
+    "status",
+    "last_contacted_date",
+    "follow_up_date",
+    "lead_score",
+    "priority",
+]
 
 
 def _get_company_or_404(db: Session, company_id: int) -> models.Company:
@@ -84,6 +104,89 @@ def create_company(
                 },
             )
     return _to_detail(crud.create_company(db, payload))
+
+
+@router.get("/export")
+def export_companies(
+    name: Optional[str] = None,
+    industry: Optional[str] = None,
+    state: Optional[str] = None,
+    city: Optional[str] = None,
+    csr_focus: Optional[str] = None,
+    status: Optional[models.LeadStatus] = None,
+    min_csr_spending: Optional[float] = None,
+    max_csr_spending: Optional[float] = None,
+    min_revenue: Optional[float] = None,
+    max_revenue: Optional[float] = None,
+    min_employees: Optional[int] = None,
+    max_employees: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """CSV export, respecting the same filters as GET /api/companies (no
+    skip/limit - export always covers the full filtered result set).
+    """
+    companies = crud.search_companies(
+        db,
+        name=name,
+        industry=industry,
+        state=state,
+        city=city,
+        csr_focus=csr_focus,
+        status=status,
+        min_csr_spending=min_csr_spending,
+        max_csr_spending=max_csr_spending,
+        min_revenue=min_revenue,
+        max_revenue=max_revenue,
+        min_employees=min_employees,
+        max_employees=max_employees,
+        skip=0,
+        limit=1_000_000,
+    )
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=_CSV_COLUMNS)
+    writer.writeheader()
+    for company in companies:
+        score = compute_lead_score(company)
+        writer.writerow(
+            {
+                "name": company.name,
+                "industry": company.industry or "",
+                "city": company.city or "",
+                "state": company.state or "",
+                "website": company.website or "",
+                "csr_focus": company.csr_focus or "",
+                "csr_spending": company.csr_spending if company.csr_spending is not None else "",
+                "revenue": company.revenue if company.revenue is not None else "",
+                "employee_count": company.employee_count if company.employee_count is not None else "",
+                "status": company.status.value,
+                "last_contacted_date": company.last_contacted_date or "",
+                "follow_up_date": company.follow_up_date or "",
+                "lead_score": score["score"],
+                "priority": score["priority"],
+            }
+        )
+
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=companies.csv"},
+    )
+
+
+@router.post("/import", response_model=schemas.ImportResult)
+async def import_companies(file: UploadFile, db: Session = Depends(get_db)):
+    """CSV import: one company per row, columns matching CompanyCreate
+    field names (see _CSV_COLUMNS / the export format above). Rows with a
+    duplicate name/website are skipped (not overwritten) rather than
+    erroring the whole upload - same "review, don't silently clobber"
+    principle as the single-company duplicate-detection flow.
+    """
+    raw = (await file.read()).decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(raw))
+    result = crud.import_companies_from_rows(db, list(reader))
+    return schemas.ImportResult(**result)
 
 
 @router.get("/{company_id}", response_model=schemas.CompanyDetail)

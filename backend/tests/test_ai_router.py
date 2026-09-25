@@ -95,6 +95,31 @@ def test_generate_email_with_contact(client, monkeypatch):
     assert captured["contact_designation"] == "CSR Head"
 
 
+def test_generate_email_logs_activity(client, monkeypatch):
+    company = _create_company(client)
+    monkeypatch.setattr(ai, "is_configured", lambda: True)
+    monkeypatch.setattr(
+        ai, "generate_email", lambda **kwargs: {"subject": "Hi there", "body": "Hello!"}
+    )
+    client.post(
+        f"/api/companies/{company['id']}/generate-email", json={"email_type": "first_outreach"}
+    )
+
+    activity = client.get("/api/dashboard").json()["recent_activity"]
+    assert any(a["event_type"] == "email_generated" for a in activity)
+
+
+def test_generate_email_not_configured_does_not_log_activity(client, monkeypatch):
+    company = _create_company(client)
+    monkeypatch.setattr(ai, "is_configured", lambda: False)
+    client.post(
+        f"/api/companies/{company['id']}/generate-email", json={"email_type": "first_outreach"}
+    )
+
+    activity = client.get("/api/dashboard").json()["recent_activity"]
+    assert not any(a["event_type"] == "email_generated" for a in activity)
+
+
 def test_generate_email_invalid_contact_404(client, monkeypatch):
     company = _create_company(client)
     other_company = _create_company(client, name="Beta Health")

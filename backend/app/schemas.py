@@ -172,3 +172,54 @@ class CompanyDetail(CompanyBase):
     contacts: list[ContactOut] = []
     notes: list[NoteOut] = []
     lead_score: Optional[LeadScore] = None
+
+
+# ----------------------------------------------------------------------------
+# Dashboard (Phase 4: KPIs, follow-ups, recent activity)
+# ----------------------------------------------------------------------------
+class ActivityLogOut(BaseModel):
+    id: int
+    company_id: int
+    company_name: str
+    event_type: str
+    description: str
+    created_at: datetime
+
+
+class DashboardKPIs(BaseModel):
+    total_companies: int
+    contacted: int
+    replies_received: int
+    meetings_scheduled: int
+    proposals_sent: int
+    successful_partnerships: int
+
+
+class FollowUpItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    status: LeadStatus
+    follow_up_date: date
+
+
+class FollowUps(BaseModel):
+    overdue: list[FollowUpItem]
+    due_today: list[FollowUpItem]
+    upcoming: list[FollowUpItem]
+
+
+class DashboardResponse(BaseModel):
+    kpis: DashboardKPIs
+    follow_ups: FollowUps
+    recent_activity: list[ActivityLogOut]
+
+
+# ----------------------------------------------------------------------------
+# CSV import (Phase 4)
+# ----------------------------------------------------------------------------
+class ImportResult(BaseModel):
+    created: int
+    skipped_duplicates: int
+    errors: list[str]
