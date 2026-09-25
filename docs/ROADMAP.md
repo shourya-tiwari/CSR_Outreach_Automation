@@ -56,14 +56,17 @@ formula + LLM-written explanation**, not a fully LLM-driven score.
 - [x] AI Meeting Brief (background, priorities, discussion points,
       questions, collaboration ideas — uses the company's saved notes)
 
-## Phase 4 — Outreach Tracking ⬜ Not started
+## Phase 4 — Outreach Tracking ✅ Complete
 
-- [ ] Dashboard view with headline KPI tiles (Total Companies,
-      Contacted, Replies, Meetings, Proposals, Successful)
-- [ ] Follow-up section with due-today/upcoming/overdue grouping,
+- [x] Dashboard view with headline KPI tiles (Total Companies,
+      Contacted, Replies, Meetings, Proposals, Successful) —
+      `GET /api/dashboard`, now the app's landing page
+- [x] Follow-up section with due-today/upcoming/overdue grouping,
       built on Phase 1's `follow_up_date`
-- [ ] Recent-activity feed (company/contact/note/status changes)
-- [ ] CSV import/export
+- [x] Recent-activity feed (company/contact/note/status changes,
+      new `ActivityLog` model)
+- [x] CSV import/export (company list, respects active filters on
+      export; duplicate-skip + per-row error reporting on import)
 
 ## Phase 5 — MVP+ Features (from the V2 plan) ⬜ Not started
 

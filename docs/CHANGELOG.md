@@ -5,6 +5,35 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## 2026-09-25
 
+### Added — `feat: add outreach dashboard, activity feed, and CSV import/export (Phase 4)`
+
+- New `ActivityLog` model (`backend/app/models.py`), cascade-deleted with
+  its company. Written as a side effect of `crud.py`'s company/contact/
+  note create + status-change logic, and by `routers/ai.py` after a
+  successful email draft - no separate "log this" call needed anywhere.
+- `GET /api/dashboard` (`backend/app/routers/dashboard.py`): headline
+  KPI tiles (Total Companies, Contacted, Replies Received, Meetings
+  Scheduled, Proposals Sent, Successful Partnerships), follow-ups
+  bucketed into Overdue/Due Today/Upcoming (excludes closed-out leads),
+  and the latest 20 activity-feed entries - one call for the whole
+  dashboard screen. KPIs beyond raw counts read the `LeadStatus`
+  pipeline in order (documented in `crud.py`) so e.g. a company at
+  "Proposal Sent" still counts toward "Meetings Scheduled", without
+  adding new schema just to track historical funnel stages.
+- `GET /api/companies/export` / `POST /api/companies/import`
+  (`backend/app/routers/companies.py`): CSV export respects the same
+  filters as the company list; import reuses the existing duplicate
+  check (skips rather than overwrites) and reports per-row errors
+  (missing name, bad numbers) instead of failing the whole upload.
+- `frontend/src/pages/DashboardPage.jsx` is now the app's landing page
+  (`/`); Companies moved to `/companies`. Export/Import CSV buttons
+  added to the Companies page toolbar.
+- 10 new pytest cases (KPI-pipeline math, follow-up bucketing, activity
+  feed ordering/cascade-delete, CSV export/import incl. duplicates and
+  bad rows, activity logging on email generation); full backend suite
+  now 74/74 passing. Verified live against the real dev stack (Vite
+  proxy → FastAPI → SQLite). `npm run build` and `oxlint` clean.
+
 ### Added — `feat: add revenue/employee filters and pagination to company list`
 
 - `CompanyFilters.jsx`: revenue and employee-count are now exposed in

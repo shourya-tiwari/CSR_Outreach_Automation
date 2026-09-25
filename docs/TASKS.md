@@ -143,11 +143,50 @@ CSR track record) was in the original factor list but isn't scored —
 no structured data source for that is integrated (would need e.g. Form
 CSR-2 filings or annual reports), so it's left out rather than faked.
 
-## Phase 4 — Outreach Tracking — ⬜ Not started
+## Phase 4 — Outreach Tracking — ✅ Complete
 
-No dashboard/analytics view, KPI tiles, or activity feed exists yet.
-Status/follow-up-date tracking (Phase 1) is the foundation this will
-build on.
+- [x] **Dashboard view with headline KPI tiles** — `GET /api/dashboard`
+      (`backend/app/routers/dashboard.py`) returns Total Companies,
+      Companies Contacted, Replies Received, Meetings Scheduled,
+      Proposals Sent, and Successful Partnerships in one call, rendered
+      on `frontend/src/pages/DashboardPage.jsx` (now the app's landing
+      page, `/`). KPIs beyond "current status" use a documented ordered
+      reading of the `LeadStatus` pipeline (`crud.py`'s
+      `_REPLIED_OR_LATER`/`_MEETING_OR_LATER`/`_PROPOSAL_OR_LATER`) so a
+      company at e.g. "Proposal Sent" still counts toward "Meetings
+      Scheduled" — a lighter-weight substitute for full historical
+      funnel tracking, deliberately chosen over adding more schema.
+- [x] **Follow-up section** — same endpoint buckets every company with a
+      `follow_up_date` into Overdue / Due Today / Upcoming
+      (`crud.py::get_follow_ups`), excluding closed-out leads
+      (Successful / Not Interested) since a reminder on a closed deal
+      isn't actionable. Shown as three columns on the dashboard.
+- [x] **Recent-activity feed** — new `ActivityLog` model
+      (`backend/app/models.py`), written as a side effect of
+      `crud.py`'s create/update functions (company added, contact
+      added/updated, note added, status changed) and of a successful AI
+      email generation (`routers/ai.py`). `GET /api/dashboard` returns
+      the latest 20 system-wide, newest first; cascade-deletes with its
+      company.
+- [x] **CSV import/export** — `GET /api/companies/export` (respects the
+      same filters as the company list) and `POST
+      /api/companies/import` (`backend/app/routers/companies.py`,
+      `crud.py::import_companies_from_rows`) on the Companies page.
+      Import skips name/website duplicates via the existing
+      `find_duplicate_company` check and reports per-row errors
+      (missing name, unparseable numbers) rather than failing the whole
+      upload.
+
+**Verified:** 10 new backend pytest cases (KPI-pipeline math, follow-up
+bucketing incl. today's real date via `date.today()`, activity-feed
+ordering and cascade-delete, CSV export/import incl. duplicate-skip and
+bad-row reporting, activity logging on email generation — 74 total for
+the backend now) — all passing. Also exercised live against the real
+dev stack (Vite proxy → FastAPI → SQLite): seeded companies across
+different statuses/follow-up dates, confirmed dashboard KPIs/follow-up
+buckets/activity feed, CSV export, and CSV import (create + duplicate
+skip + bad-row report) all return correct results over HTTP matching
+what the UI calls. `npm run build` and `oxlint` clean on the frontend.
 
 ## Phase 5 — MVP+ Features — ⬜ Not started
 
