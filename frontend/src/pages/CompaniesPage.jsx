@@ -4,6 +4,7 @@ import { listCompanies, createCompany } from "../api/client";
 import CompanyFilters from "../components/CompanyFilters";
 import CompanyForm from "../components/CompanyForm";
 import StatusBadge from "../components/StatusBadge";
+import { PRIORITY_STYLES } from "../constants";
 
 export default function CompaniesPage() {
   const [filters, setFilters] = useState({});
@@ -65,20 +66,21 @@ export default function CompaniesPage() {
               <th className="px-4 py-3">Location</th>
               <th className="px-4 py-3">CSR focus</th>
               <th className="px-4 py-3">Contacts</th>
+              <th className="px-4 py-3">Lead Score</th>
               <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
                   Loading…
                 </td>
               </tr>
             )}
             {!loading && companies.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
                   No companies match these filters yet.
                 </td>
               </tr>
@@ -103,6 +105,19 @@ export default function CompaniesPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{company.csr_focus || "—"}</td>
                   <td className="px-4 py-3 text-slate-600">{company.contact_count}</td>
+                  <td className="px-4 py-3">
+                    {company.lead_score ? (
+                      <span
+                        className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          PRIORITY_STYLES[company.lead_score.priority] ?? "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {company.lead_score.score}/100 · {company.lead_score.priority}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={company.status} />
                   </td>

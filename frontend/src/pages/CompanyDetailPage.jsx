@@ -6,6 +6,8 @@ import StatusPanel from "../components/StatusPanel";
 import ContactsSection from "../components/ContactsSection";
 import NotesSection from "../components/NotesSection";
 import DiscoverContactsPanel from "../components/DiscoverContactsPanel";
+import LeadScoreBadge from "../components/LeadScoreBadge";
+import AIPanel from "../components/AIPanel";
 
 export default function CompanyDetailPage() {
   const { id } = useParams();
@@ -71,6 +73,9 @@ export default function CompanyDetailPage() {
               {company.website}
             </a>
           )}
+          <div className="mt-2">
+            <LeadScoreBadge companyId={company.id} leadScore={company.lead_score} />
+          </div>
         </div>
         <button
           type="button"
@@ -103,8 +108,9 @@ export default function CompanyDetailPage() {
           <DiscoverContactsPanel company={company} onChanged={refresh} />
           <NotesSection companyId={company.id} notes={company.notes} onChanged={refresh} />
         </div>
-        <div>
+        <div className="space-y-6">
           <StatusPanel company={company} onUpdated={setCompany} />
+          <AIPanel company={company} />
         </div>
       </div>
     </div>

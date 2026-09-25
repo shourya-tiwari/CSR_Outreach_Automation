@@ -86,3 +86,22 @@ export function scrapeCompany(companyId) {
 export function enrichCompany(companyId) {
   return request(`/companies/${companyId}/enrich`, { method: "POST" });
 }
+
+export function explainScore(companyId) {
+  return request(`/companies/${companyId}/score/explain`, { method: "POST" });
+}
+
+export function generateEmail(companyId, { emailType, contactId }) {
+  return request(`/companies/${companyId}/generate-email`, {
+    method: "POST",
+    body: JSON.stringify({ email_type: emailType, contact_id: contactId ?? null }),
+  });
+}
+
+export function generateCompanySummary(companyId) {
+  return request(`/companies/${companyId}/summary`, { method: "POST" });
+}
+
+export function generateMeetingBrief(companyId) {
+  return request(`/companies/${companyId}/meeting-brief`, { method: "POST" });
+}
