@@ -6,29 +6,37 @@ import CompanyForm from "../components/CompanyForm";
 import StatusBadge from "../components/StatusBadge";
 import { PRIORITY_STYLES } from "../constants";
 
+const PAGE_SIZE = 25;
+
 export default function CompaniesPage() {
   const [filters, setFilters] = useState({});
+  const [page, setPage] = useState(0);
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
 
+  const updateFilters = (newFilters) => {
+    setFilters(newFilters);
+    setPage(0);
+  };
+
   useEffect(() => {
     const timeout = setTimeout(() => {
       setLoading(true);
-      listCompanies(filters)
+      listCompanies({ ...filters, skip: page * PAGE_SIZE, limit: PAGE_SIZE })
         .then(setCompanies)
         .catch((err) => setError(err.message))
         .finally(() => setLoading(false));
     }, 250); // debounce free-text filter typing
 
     return () => clearTimeout(timeout);
-  }, [filters]);
+  }, [filters, page]);
 
   const handleCreate = async (payload, { force = false } = {}) => {
     await createCompany(payload, { force });
     setShowForm(false);
-    listCompanies(filters).then(setCompanies);
+    listCompanies({ ...filters, skip: page * PAGE_SIZE, limit: PAGE_SIZE }).then(setCompanies);
   };
 
   return (
@@ -50,7 +58,7 @@ export default function CompaniesPage() {
       </header>
 
       <div className="mb-6">
-        <CompanyFilters filters={filters} onChange={setFilters} onReset={() => setFilters({})} />
+        <CompanyFilters filters={filters} onChange={updateFilters} onReset={() => updateFilters({})} />
       </div>
 
       {error && (
@@ -125,6 +133,30 @@ export default function CompaniesPage() {
               ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <span className="text-sm text-slate-500">
+          {loading ? "Loading…" : `Showing ${companies.length ? page * PAGE_SIZE + 1 : 0}–${page * PAGE_SIZE + companies.length}`}
+        </span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0 || loading}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            ← Previous
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={companies.length < PAGE_SIZE || loading}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Next →
+          </button>
+        </div>
       </div>
 
       {showForm && (

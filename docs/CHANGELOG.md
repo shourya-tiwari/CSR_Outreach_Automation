@@ -5,6 +5,23 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## 2026-09-25
 
+### Added — `feat: add revenue/employee filters and pagination to company list`
+
+- `CompanyFilters.jsx`: revenue and employee-count are now exposed in
+  the UI as an optional "More filters" toggle (min/max revenue, min/max
+  employees) — closes the gap where the spec's "Optional filters:
+  Revenue, Employee Count" (`docs/PROJECT_OVERVIEW.md`) had no frontend
+  filter UI at all, despite backend support in `search_companies`.
+- `CompaniesPage.jsx`: Previous/Next pagination (25 per page) using the
+  `skip`/`limit` params the backend already supported; page resets to 0
+  whenever filters change.
+- Verified live against the real dev stack (Vite proxy → FastAPI →
+  SQLite): seeded companies with varying revenue/employee counts,
+  confirmed filtering and paging return the expected slices over HTTP.
+  `npm run build` and `oxlint` clean; full 64/64 backend suite still
+  passing (no backend changes needed - the filter/pagination params
+  already existed).
+
 ### Docs — `docs: update project docs for Phase 3 completion`
 
 - Marked Phase 3 (AI Features) complete in `TASKS.md` and `ROADMAP.md`,

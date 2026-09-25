@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { LEAD_STATUSES } from "../constants";
 
 const FIELDS = [
@@ -8,7 +9,16 @@ const FIELDS = [
   { key: "csr_focus", label: "CSR focus", type: "text" },
 ];
 
+const OPTIONAL_FIELDS = [
+  { key: "min_revenue", label: "Min revenue (₹)", placeholder: "e.g. 10000000" },
+  { key: "max_revenue", label: "Max revenue (₹)", placeholder: "e.g. 500000000" },
+  { key: "min_employees", label: "Min employees", placeholder: "e.g. 50" },
+  { key: "max_employees", label: "Max employees", placeholder: "e.g. 5000" },
+];
+
 export default function CompanyFilters({ filters, onChange, onReset }) {
+  const [showOptional, setShowOptional] = useState(false);
+
   const handleField = (key) => (event) => {
     onChange({ ...filters, [key]: event.target.value });
   };
@@ -73,6 +83,35 @@ export default function CompanyFilters({ filters, onChange, onReset }) {
           />
         </div>
       </div>
+
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => setShowOptional((v) => !v)}
+          className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+        >
+          {showOptional ? "− Hide revenue / employee filters" : "+ More filters (revenue, employees)"}
+        </button>
+      </div>
+
+      {showOptional && (
+        <div className="mt-3 grid grid-cols-1 gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+          {OPTIONAL_FIELDS.map((field) => (
+            <div key={field.key}>
+              <label className="mb-1 block text-xs font-medium text-slate-600">
+                {field.label}
+              </label>
+              <input
+                type="number"
+                value={filters[field.key] ?? ""}
+                onChange={handleField(field.key)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                placeholder={field.placeholder}
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="mt-3 flex justify-end">
         <button

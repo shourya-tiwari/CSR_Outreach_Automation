@@ -36,12 +36,16 @@ add-note → update-status → fetch-detail → filtered-list workflow
 exercised end-to-end through the real dev stack (Vite proxy → FastAPI →
 DB) via HTTP, matching exactly what the UI calls.
 
-**Known gaps vs. the six-feature MVP** (intentionally out of Phase 1
-scope, tracked for later phases): revenue/employee-count are stored and
-filterable but not yet shown as *optional* toggle filters in the UI
-(they're always-visible fields); no pagination on the company list yet
-(fine at prototype scale, `skip`/`limit` are already supported
-server-side).
+**Update (2026-09-25):** revenue/employee-count are now exposed in the
+UI as an *optional* "More filters" toggle in `CompanyFilters.jsx` (per
+the spec's "Optional filters: Revenue, Employee Count"), and the company
+list has Previous/Next pagination (`CompaniesPage.jsx`, 25 per page)
+using the `skip`/`limit` params `search_companies` already supported.
+Verified live against the real dev stack (Vite proxy → FastAPI →
+SQLite): seeded companies with varying revenue/employee counts,
+confirmed `min_revenue`/`max_revenue`/`min_employees`/`max_employees`
+filtering and `skip`/`limit` paging return the expected slices over
+HTTP. `npm run build` and `oxlint` clean.
 
 ## Phase 2 — CSR Contact Discovery — ✅ Complete
 
@@ -156,8 +160,8 @@ timeline — none started.
 
 ## Near-Term Engineering Tasks
 
-- [ ] Add pagination controls to the company list UI (backend already
-      supports `skip`/`limit`).
+- [x] Add pagination controls to the company list UI (backend already
+      supports `skip`/`limit`) — done 2026-09-25.
 - [ ] Consider Alembic migrations once the schema needs to evolve after
       real data exists (Phase 1 uses `Base.metadata.create_all` for
       simplicity, matching the "avoid infra complexity" principle).
