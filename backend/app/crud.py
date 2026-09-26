@@ -7,6 +7,7 @@ from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 
 from . import models, schemas
+from .config import settings
 
 # Statuses later in the pipeline than a given stage imply that stage was
 # already reached (e.g. a company at "Proposal Sent" obviously already had
@@ -80,7 +81,14 @@ def create_company(db: Session, payload: schemas.CompanyCreate) -> models.Compan
 def get_company(db: Session, company_id: int) -> Optional[models.Company]:
     return (
         db.query(models.Company)
-        .options(joinedload(models.Company.contacts), joinedload(models.Company.notes))
+        .options(
+            joinedload(models.Company.contacts),
+            joinedload(models.Company.notes),
+            joinedload(models.Company.tags),
+            joinedload(models.Company.documents),
+            joinedload(models.Company.proposals),
+            joinedload(models.Company.activity_logs),
+        )
         .filter(models.Company.id == company_id)
         .first()
     )
@@ -101,6 +109,7 @@ def search_companies(
     max_revenue: Optional[float] = None,
     min_employees: Optional[int] = None,
     max_employees: Optional[int] = None,
+    tag: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
 ) -> list[models.Company]:
@@ -130,9 +139,11 @@ def search_companies(
         query = query.filter(models.Company.employee_count >= min_employees)
     if max_employees is not None:
         query = query.filter(models.Company.employee_count <= max_employees)
+    if tag:
+        query = query.join(models.Company.tags).filter(models.Tag.name.ilike(tag))
 
     return (
-        query.options(joinedload(models.Company.contacts))
+        query.options(joinedload(models.Company.contacts), joinedload(models.Company.tags))
         .order_by(models.Company.name)
         .offset(skip)
         .limit(limit)
@@ -293,7 +304,7 @@ def get_recent_activity(db: Session, limit: int = 20) -> list[models.ActivityLog
     return (
         db.query(models.ActivityLog)
         .options(joinedload(models.ActivityLog.company))
-        .order_by(models.ActivityLog.created_at.desc())
+        .order_by(models.ActivityLog.created_at.desc(), models.ActivityLog.id.desc())
         .limit(limit)
         .all()
     )
@@ -348,3 +359,174 @@ def import_companies_from_rows(db: Session, rows: list[dict]) -> dict:
         created += 1
 
     return {"created": created, "skipped_duplicates": skipped_duplicates, "errors": errors}
+
+
+# ----------------------------------------------------------------------------
+# Tags (Phase 5)
+# ----------------------------------------------------------------------------
+def list_tags(db: Session) -> list[models.Tag]:
+    return db.query(models.Tag).order_by(models.Tag.name).all()
+
+
+def get_tag(db: Session, tag_id: int) -> Optional[models.Tag]:
+    return db.query(models.Tag).filter(models.Tag.id == tag_id).first()
+
+
+def get_or_create_tag(db: Session, name: str) -> models.Tag:
+    clean = name.strip()
+    tag = db.query(models.Tag).filter(models.Tag.name.ilike(clean)).first()
+    if tag is not None:
+        return tag
+    tag = models.Tag(name=clean)
+    db.add(tag)
+    db.commit()
+    db.refresh(tag)
+    return tag
+
+
+def delete_tag(db: Session, tag: models.Tag) -> None:
+    db.delete(tag)
+    db.commit()
+
+
+def add_tag_to_company(db: Session, company: models.Company, tag: models.Tag) -> models.Company:
+    if tag not in company.tags:
+        company.tags.append(tag)
+        _log_activity(db, company.id, "tag_added", f"Tag '{tag.name}' added")
+        db.commit()
+        db.refresh(company)
+    return company
+
+
+def remove_tag_from_company(db: Session, company: models.Company, tag: models.Tag) -> models.Company:
+    if tag in company.tags:
+        company.tags.remove(tag)
+        _log_activity(db, company.id, "tag_removed", f"Tag '{tag.name}' removed")
+        db.commit()
+        db.refresh(company)
+    return company
+
+
+# ----------------------------------------------------------------------------
+# Documents (Phase 5)
+# ----------------------------------------------------------------------------
+def add_document(
+    db: Session, company_id: int, filename: str, content_type: Optional[str], data: bytes
+) -> models.Document:
+    document = models.Document(
+        company_id=company_id,
+        filename=filename,
+        content_type=content_type,
+        size=len(data),
+        data=data,
+    )
+    db.add(document)
+    _log_activity(db, company_id, "document_added", f"Document '{filename}' uploaded")
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def get_document(db: Session, document_id: int) -> Optional[models.Document]:
+    return db.query(models.Document).filter(models.Document.id == document_id).first()
+
+
+def delete_document(db: Session, document: models.Document) -> None:
+    db.delete(document)
+    db.commit()
+
+
+# ----------------------------------------------------------------------------
+# Proposals (Phase 5)
+# ----------------------------------------------------------------------------
+def create_proposal(
+    db: Session, company_id: int, payload: schemas.ProposalCreate
+) -> models.Proposal:
+    proposal = models.Proposal(company_id=company_id, **payload.model_dump())
+    db.add(proposal)
+    _log_activity(
+        db, company_id, "proposal_added", f"Proposal '{proposal.title}' added ({proposal.stage.value})"
+    )
+    db.commit()
+    db.refresh(proposal)
+    return proposal
+
+
+def get_proposal(db: Session, proposal_id: int) -> Optional[models.Proposal]:
+    return db.query(models.Proposal).filter(models.Proposal.id == proposal_id).first()
+
+
+def update_proposal(
+    db: Session, proposal: models.Proposal, payload: schemas.ProposalUpdate
+) -> models.Proposal:
+    updates = payload.model_dump(exclude_unset=True)
+    old_stage = proposal.stage
+    for field, value in updates.items():
+        setattr(proposal, field, value)
+    if "stage" in updates and proposal.stage != old_stage:
+        _log_activity(
+            db,
+            proposal.company_id,
+            "proposal_stage_changed",
+            f"Proposal '{proposal.title}' moved from {old_stage.value} to {proposal.stage.value}",
+        )
+    db.commit()
+    db.refresh(proposal)
+    return proposal
+
+
+def delete_proposal(db: Session, proposal: models.Proposal) -> None:
+    db.delete(proposal)
+    db.commit()
+
+
+# ----------------------------------------------------------------------------
+# NGO Profile (Phase 5)
+# ----------------------------------------------------------------------------
+# Maps NGOProfile columns to the app.config.settings fields that scoring.py
+# and ai.py actually read - kept in sync on every load/update so editing the
+# profile takes effect immediately without threading a db session through
+# every scoring/AI call site.
+_NGO_SETTINGS_FIELDS = {
+    "name": "ngo_name",
+    "work_area": "ngo_work_area",
+    "focus_areas": "ngo_focus_areas",
+    "city": "ngo_city",
+    "state": "ngo_state",
+}
+
+
+def _sync_settings_from_ngo_profile(profile: models.NGOProfile) -> None:
+    for profile_field, settings_field in _NGO_SETTINGS_FIELDS.items():
+        value = getattr(profile, profile_field)
+        if value is not None:
+            setattr(settings, settings_field, value)
+
+
+def get_ngo_profile(db: Session) -> models.NGOProfile:
+    profile = db.query(models.NGOProfile).filter(models.NGOProfile.id == 1).first()
+    if profile is None:
+        profile = models.NGOProfile(
+            id=1,
+            name=settings.ngo_name,
+            work_area=settings.ngo_work_area,
+            focus_areas=settings.ngo_focus_areas,
+            city=settings.ngo_city,
+            state=settings.ngo_state,
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    _sync_settings_from_ngo_profile(profile)
+    return profile
+
+
+def update_ngo_profile(
+    db: Session, profile: models.NGOProfile, payload: schemas.NGOProfileUpdate
+) -> models.NGOProfile:
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(profile, field, value)
+    db.commit()
+    db.refresh(profile)
+    _sync_settings_from_ngo_profile(profile)
+    return profile

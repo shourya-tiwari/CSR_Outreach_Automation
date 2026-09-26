@@ -59,6 +59,7 @@ def list_companies(
     max_revenue: Optional[float] = None,
     min_employees: Optional[int] = None,
     max_employees: Optional[int] = None,
+    tag: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -77,6 +78,7 @@ def list_companies(
         max_revenue=max_revenue,
         min_employees=min_employees,
         max_employees=max_employees,
+        tag=tag,
         skip=skip,
         limit=limit,
     )
@@ -120,6 +122,7 @@ def export_companies(
     max_revenue: Optional[float] = None,
     min_employees: Optional[int] = None,
     max_employees: Optional[int] = None,
+    tag: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """CSV export, respecting the same filters as GET /api/companies (no
@@ -139,6 +142,7 @@ def export_companies(
         max_revenue=max_revenue,
         min_employees=min_employees,
         max_employees=max_employees,
+        tag=tag,
         skip=0,
         limit=1_000_000,
     )
@@ -216,3 +220,34 @@ def add_contact(company_id: int, payload: schemas.ContactCreate, db: Session = D
 def add_note(company_id: int, payload: schemas.NoteCreate, db: Session = Depends(get_db)):
     _get_company_or_404(db, company_id)
     return crud.create_note(db, company_id, payload)
+
+
+@router.post("/{company_id}/tags", response_model=list[schemas.TagOut], status_code=201)
+def add_tag(company_id: int, payload: schemas.TagCreate, db: Session = Depends(get_db)):
+    company = _get_company_or_404(db, company_id)
+    tag = crud.get_or_create_tag(db, payload.name)
+    company = crud.add_tag_to_company(db, company, tag)
+    return company.tags
+
+
+@router.delete("/{company_id}/tags/{tag_id}", response_model=list[schemas.TagOut])
+def remove_tag(company_id: int, tag_id: int, db: Session = Depends(get_db)):
+    company = _get_company_or_404(db, company_id)
+    tag = crud.get_tag(db, tag_id)
+    if tag is None:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    company = crud.remove_tag_from_company(db, company, tag)
+    return company.tags
+
+
+@router.post("/{company_id}/documents", response_model=schemas.DocumentOut, status_code=201)
+async def upload_document(company_id: int, file: UploadFile, db: Session = Depends(get_db)):
+    _get_company_or_404(db, company_id)
+    data = await file.read()
+    return crud.add_document(db, company_id, file.filename, file.content_type, data)
+
+
+@router.post("/{company_id}/proposals", response_model=schemas.ProposalOut, status_code=201)
+def add_proposal(company_id: int, payload: schemas.ProposalCreate, db: Session = Depends(get_db)):
+    _get_company_or_404(db, company_id)
+    return crud.create_proposal(db, company_id, payload)

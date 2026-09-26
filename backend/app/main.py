@@ -5,10 +5,21 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import models  # noqa: F401 - import registers models on Base.metadata
+from . import crud, models  # noqa: F401 - models import registers tables on Base.metadata
 from .config import settings
-from .database import Base, engine
-from .routers import ai, companies, contacts, dashboard, discovery, notes
+from .database import Base, SessionLocal, engine
+from .routers import (
+    ai,
+    companies,
+    contacts,
+    dashboard,
+    discovery,
+    documents,
+    ngo_profile,
+    notes,
+    proposals,
+    tags,
+)
 
 
 @asynccontextmanager
@@ -17,6 +28,16 @@ async def lifespan(app: FastAPI):
     # for testing doesn't require a live database connection - tests
     # supply their own engine via dependency override (see tests/conftest.py).
     Base.metadata.create_all(bind=engine)
+
+    # Load the persisted NGO profile (seeding it from env defaults on first
+    # run) and mirror it onto `settings` - see crud.get_ngo_profile - so
+    # scoring.py/ai.py reflect any profile edits made in a previous run.
+    db = SessionLocal()
+    try:
+        crud.get_ngo_profile(db)
+    finally:
+        db.close()
+
     yield
 
 
@@ -36,6 +57,10 @@ app.include_router(notes.router)
 app.include_router(discovery.router)
 app.include_router(ai.router)
 app.include_router(dashboard.router)
+app.include_router(tags.router)
+app.include_router(documents.router)
+app.include_router(proposals.router)
+app.include_router(ngo_profile.router)
 
 
 @app.get("/api/health")
