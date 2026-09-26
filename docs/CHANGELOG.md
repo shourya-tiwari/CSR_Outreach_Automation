@@ -3,6 +3,38 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## 2026-09-26 (2)
+
+### Added — `feat: harden validation/uploads and prepare deployment (Phase 6)`
+
+- Validation: `csr_spending`/`revenue`/`employee_count` (companies) and
+  `amount` (proposals) now reject negative values (`ge=0` on the
+  relevant Pydantic schemas); a CSV import row that fails this
+  validation is now reported as a per-row error instead of raising and
+  500ing the whole import.
+- Upload caps: document upload and CSV import now enforce a max size
+  (10 MB / 5 MB, `MAX_DOCUMENT_UPLOAD_BYTES` / `MAX_CSV_IMPORT_BYTES`),
+  returning `413` — previously unbounded.
+- `GET /api/companies`'s `limit` is now capped at 500 (was unbounded);
+  `skip`/`limit` reject negative/zero values.
+- `backend/tests/test_validation.py`: 12 new pytest cases covering all
+  of the above. 107/107 backend tests passing (up from 95).
+- `backend/scripts/load_test.py`: seeds 3,000 companies and times the
+  real endpoints against them (SQLite, since no live Postgres is
+  available here) — see results in `TASKS.md`'s Phase 6 section.
+- `backend/scripts/seed_demo_data.py`: ten realistic demo companies for
+  showing the app or running UAT sessions; idempotent.
+- Deployment prep (not executed — needs the user's own hosting
+  accounts): `render.yaml` (backend Blueprint), `frontend/vercel.json`
+  (SPA rewrite), `frontend/src/api/client.js` now reads
+  `VITE_API_BASE_URL` so the frontend can target a separately-hosted
+  backend (falls back to the existing relative `/api` path — local dev
+  unaffected). New docs: `docs/DEPLOYMENT.md`,
+  `docs/PRE_DEPLOYMENT_CHECKLIST.md`, `docs/UAT_CHECKLIST.md`,
+  `docs/USER_GUIDE.md`.
+- `npm run build` / `npm run lint` clean on the frontend after the
+  `client.js` change.
+
 ## 2026-09-26
 
 ### Added — `feat: add NGO profile, tags, documents, and proposal tracker (Phase 5)`

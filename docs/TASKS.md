@@ -1,7 +1,7 @@
 # Tasks
 
 Status against the phased plan in [`ROADMAP.md`](ROADMAP.md), as of
-2026-09-25. **The `legacy-streamlit-prototype/` code does not count
+2026-09-26. **The `legacy-streamlit-prototype/` code does not count
 toward any phase's completion** (explicit user instruction) — all
 status below reflects only `backend/` (FastAPI + PostgreSQL) and
 `frontend/` (React + Tailwind). Legend: ✅ done · 🟡 partial · ⬜ not
@@ -247,7 +247,68 @@ profile edits changing a newly-created company's lead score, all
 confirmed over real HTTP. `npm run build` and `oxlint` clean on the
 frontend.
 
-## Phase 6 — Final Testing & Deployment — ⬜ Not started
+## Phase 6 — Final Testing & Deployment — 🟡 In progress
+
+- [x] **Expand automated tests** — added `backend/tests/test_validation.py`
+      (12 new cases): negative-number rejection on company/proposal
+      numeric fields, pagination bounds (`skip`/`limit` now validated,
+      `limit` capped at 500), oversized-upload rejection (documents and
+      CSV import), a CSV row with a validation error now reported as a
+      per-row error instead of 500ing the whole import, empty-CSV
+      handling, and invalid-enum rejection on `status`. 107/107 backend
+      tests passing (up from 95).
+- [x] **Hardening found via this testing** — three real gaps fixed, not
+      just tested around: (1) `CompanyCreate`/`CompanyUpdate`/
+      `ProposalCreate`/`ProposalUpdate` had no lower bound on
+      `csr_spending`/`revenue`/`employee_count`/`amount`, so a bad CSV
+      row or typo could silently store negative values that would
+      corrupt lead scoring — added `ge=0` validation
+      (`backend/app/schemas.py`); (2) document upload and CSV import had
+      no size limit, so one oversized file could be stored unbounded in
+      Postgres or exhaust the free-tier backend's memory — added
+      `MAX_DOCUMENT_UPLOAD_BYTES` (10 MB) / `MAX_CSV_IMPORT_BYTES` (5 MB)
+      caps returning `413`; (3) `GET /api/companies`'s `limit` was
+      unbounded, so a client could request an arbitrarily large page —
+      capped at 500.
+- [x] **Test with real company data at larger volume** —
+      `backend/scripts/load_test.py` seeds 3,000 companies (varied
+      industries/cities/statuses, contacts/notes/tags) and times the
+      actual endpoints the UI calls. Run once during this phase: default
+      list ~184ms, filtered/tag/paginated queries 15-25ms, full CSV
+      export of all 3,000 rows ~218ms, dashboard ~22ms, single company
+      detail ~16ms — nothing pathological at this volume. **Caveat:**
+      run against SQLite (no live Postgres instance available in this
+      environment); re-run against the real Postgres target before
+      treating these numbers as production guidance.
+- [x] **Demo/seed data** — `backend/scripts/seed_demo_data.py`: ten
+      realistic Indian companies across industries/states with a few
+      contacts and tags, for demoing the app or running UAT sessions.
+      Safe to re-run (skips companies that already exist via the same
+      duplicate-detection path the API uses).
+- [ ] **Test with actual NGO staff; simplify confusing screens** — not
+      done. This needs real NGO staff using the *deployed* app, which
+      hasn't happened. [`UAT_CHECKLIST.md`](UAT_CHECKLIST.md) has the
+      specific tasks/observations to run through when it does — don't
+      mark this done until that session has actually happened.
+- [ ] **Deploy** — not done; deployment is prepared, not executed. Added
+      `render.yaml` (backend Blueprint), `frontend/vercel.json` (SPA
+      rewrite so client-side routes survive a hard refresh), and
+      `frontend/src/api/client.js` now reads `VITE_API_BASE_URL` (falls
+      back to the existing relative `/api` path, so local dev is
+      unaffected) so the frontend can call a separately-hosted backend
+      in production. Full step-by-step in
+      [`DEPLOYMENT.md`](DEPLOYMENT.md) and
+      [`PRE_DEPLOYMENT_CHECKLIST.md`](PRE_DEPLOYMENT_CHECKLIST.md) —
+      executing it needs the user's own Neon/Render/Vercel accounts and
+      credentials.
+- [x] **Write a one-page user guide for non-technical staff** —
+      [`USER_GUIDE.md`](USER_GUIDE.md).
+
+**Verified:** `pytest -q` → 107/107 passing. `npm run build` and
+`npm run lint` (oxlint) clean on the frontend after the `client.js`
+change. `backend/scripts/seed_demo_data.py` and `load_test.py` both run
+end-to-end (against a scratch SQLite database, cleaned up afterward —
+no changes to any real database).
 
 ---
 

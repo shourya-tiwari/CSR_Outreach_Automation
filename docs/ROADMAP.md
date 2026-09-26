@@ -80,16 +80,26 @@ formula + LLM-written explanation**, not a fully LLM-driven score.
       per company, activity-logged on stage change)
 - [x] Activity Timeline UI (per-company, on the Company Detail page)
 
-## Phase 6 — Final Testing & Deployment ⬜ Not started
+## Phase 6 — Final Testing & Deployment 🟡 In progress
 
-- [ ] Expand automated tests as features grow (Phase 1 baseline: 13
-      passing backend tests covering companies/contacts/notes CRUD)
-- [ ] Test with real company data at larger volume
-- [ ] Test with actual NGO staff; simplify confusing screens
-- [ ] Deploy (target per the plan: Vercel for the frontend, Render/
-      Railway for the backend, Neon/Supabase for PostgreSQL — no
-      Docker/Kubernetes/CI complexity)
-- [ ] Write a one-page user guide for non-technical staff
+- [x] Expand automated tests as features grow (107 backend tests now,
+      up from 95 — added validation/edge-case coverage found while
+      preparing for larger-volume use)
+- [x] Test with real company data at larger volume (`backend/scripts/
+      load_test.py` — see results in `TASKS.md`; caveat: run against
+      SQLite, not the production Postgres target, since no live
+      Postgres instance is available in this environment)
+- [ ] Test with actual NGO staff; simplify confusing screens — **not
+      done**, needs real staff on a deployed environment; see
+      [`UAT_CHECKLIST.md`](UAT_CHECKLIST.md) for the checklist to run
+      when that happens
+- [ ] Deploy (target per the plan: Vercel for the frontend, Render for
+      the backend, Neon for PostgreSQL) — **not done**; deployment is
+      prepared but not executed (needs the user's own hosting
+      accounts/credentials) — see [`DEPLOYMENT.md`](DEPLOYMENT.md) and
+      [`PRE_DEPLOYMENT_CHECKLIST.md`](PRE_DEPLOYMENT_CHECKLIST.md)
+- [x] Write a one-page user guide for non-technical staff —
+      [`USER_GUIDE.md`](USER_GUIDE.md)
 
 ---
 
