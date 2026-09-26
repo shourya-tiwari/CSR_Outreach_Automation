@@ -86,3 +86,55 @@ def test_import_companies_skips_duplicates_and_reports_bad_rows(client):
 
     listed = client.get("/api/companies").json()
     assert {c["name"] for c in listed} == {"Existing Co", "Good Co"}
+
+
+def test_export_import_round_trip_preserves_outreach_fields(client):
+    """A CSV export that is edited and re-imported must keep the outreach
+    state it was exported with. These columns are written by the export
+    (_CSV_COLUMNS) but used to be dropped on import, silently resetting
+    every re-imported company to "New" with no dates.
+    """
+    company = _create_company(client, name="Pipeline Co")
+    client.patch(
+        f"/api/companies/{company['id']}",
+        json={
+            "status": "Meeting",
+            "last_contacted_date": "2026-09-20",
+            "follow_up_date": "2026-10-15",
+        },
+    )
+
+    exported = client.get("/api/companies/export").text
+    header, row = exported.strip().split("\n")[:2]
+    # Rename the name *and* the website, or the re-import is (correctly)
+    # skipped as a duplicate of the company it was exported from.
+    copy_row = row.replace("Pipeline Co", "Pipeline Copy Co").replace("pipeline-co", "pipeline-copy-co")
+    reimported = _upload_csv(client, header + "\n" + copy_row + "\n")
+    assert reimported.status_code == 200
+    assert reimported.json()["created"] == 1
+
+    copy = next(c for c in client.get("/api/companies").json() if c["name"] == "Pipeline Copy Co")
+    detail = client.get(f"/api/companies/{copy['id']}").json()
+    assert detail["status"] == "Meeting"
+    assert detail["last_contacted_date"] == "2026-09-20"
+    assert detail["follow_up_date"] == "2026-10-15"
+
+
+def test_import_reports_invalid_status_as_row_error(client):
+    csv_text = "name,status\nBogus Status Co,Nonsense\nFine Co,Contacted\n"
+    response = _upload_csv(client, csv_text)
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["created"] == 1
+    assert len(body["errors"]) == 1
+    listed = client.get("/api/companies").json()
+    assert {c["name"] for c in listed} == {"Fine Co"}
+
+
+def test_create_company_accepts_and_validates_status(client):
+    created = _create_company(client, name="Starts Contacted Co", status="Contacted")
+    assert created["status"] == "Contacted"
+
+    rejected = client.post("/api/companies", json={"name": "Bad Status Co", "status": "Nonsense"})
+    assert rejected.status_code == 422

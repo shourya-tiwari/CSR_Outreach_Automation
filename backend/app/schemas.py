@@ -213,7 +213,15 @@ class CompanyBase(BaseModel):
 
 
 class CompanyCreate(CompanyBase):
-    pass
+    # Outreach-tracking fields are settable at create time so a CSV export
+    # round-trips: _CSV_COLUMNS writes status/last_contacted_date/
+    # follow_up_date, and import builds rows through this schema - without
+    # them here, re-importing an edited export silently reset every company
+    # to "New" with no dates. Also means an invalid status is rejected (422)
+    # on create rather than being quietly dropped.
+    status: LeadStatus = LeadStatus.NEW
+    last_contacted_date: Optional[date] = None
+    follow_up_date: Optional[date] = None
 
 
 class CompanyUpdate(BaseModel):
