@@ -98,8 +98,9 @@ def test_dashboard_recent_activity_records_key_events(client):
     assert "note_added" in event_types
     assert "status_changed" in event_types
     assert all(a["company_name"] == "Activity Co" for a in activity)
-    # most recent first
-    assert activity[0]["event_type"] == "status_changed"
+    # most recent first, deterministically (falls back to id desc when two
+    # events share the same created_at second - see models.py/crud.py)
+    assert event_types == ["status_changed", "note_added", "contact_added", "company_added"]
 
 
 def test_dashboard_activity_deleted_with_company(client):
