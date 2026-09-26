@@ -68,15 +68,17 @@ formula + LLM-written explanation**, not a fully LLM-driven score.
 - [x] CSV import/export (company list, respects active filters on
       export; duplicate-skip + per-row error reporting on import)
 
-## Phase 5 — MVP+ Features (from the V2 plan) ⬜ Not started
+## Phase 5 — MVP+ Features (from the V2 plan) ✅ Complete
 
-- [ ] NGO Profile (org name/mission/focus stored once, reused in
-      generated emails)
-- [ ] Document storage (proposals, CSR reports, MoUs, receipts per
-      company)
-- [ ] Tags (Education, Healthcare, Environment, High Priority, etc.)
-- [ ] Proposal Tracker (Requested → Drafting → Sent → Approved/Rejected)
-- [ ] Activity Timeline UI
+- [x] NGO Profile (org name/mission/focus stored once via
+      `GET/PATCH /api/ngo-profile`, reused automatically in lead
+      scoring and generated emails)
+- [x] Document storage (proposals, CSR reports, MoUs, receipts per
+      company — stored in Postgres, no separate file-storage infra)
+- [x] Tags (reusable, many-to-many, filterable on the company list)
+- [x] Proposal Tracker (Requested → Drafting → Sent → Approved/Rejected,
+      per company, activity-logged on stage change)
+- [x] Activity Timeline UI (per-company, on the Company Detail page)
 
 ## Phase 6 — Final Testing & Deployment ⬜ Not started
 

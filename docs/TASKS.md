@@ -188,10 +188,64 @@ buckets/activity feed, CSV export, and CSV import (create + duplicate
 skip + bad-row report) all return correct results over HTTP matching
 what the UI calls. `npm run build` and `oxlint` clean on the frontend.
 
-## Phase 5 — MVP+ Features — ⬜ Not started
+## Phase 5 — MVP+ Features — ✅ Complete
 
-NGO Profile, document storage, tags, proposal tracker, activity
-timeline — none started.
+- [x] **NGO Profile** — new single-row `NGOProfile` model
+      (`backend/app/models.py`), replacing the env-only `NGO_*` settings
+      as the thing NGO staff actually edit. `GET/PATCH /api/ngo-profile`
+      (`routers/ngo_profile.py`); `frontend/src/pages/NGOProfilePage.jsx`
+      (`/ngo-profile`, linked from the nav). Seeded from the existing env
+      defaults on first access; every read/write mirrors the row onto
+      the live `settings` object (`crud.py`'s
+      `_sync_settings_from_ngo_profile`) so `scoring.py`'s
+      location/focus match and `ai.py`'s generated content pick up edits
+      immediately, without threading a db session through either module.
+      Re-synced from the DB on app startup so edits survive a restart.
+- [x] **Tags** — new `Tag` model + `company_tags` association table
+      (many-to-many, reusable across companies). `GET/POST /api/tags`,
+      `DELETE /api/tags/{id}` (`routers/tags.py`); attach/detach via
+      `POST/DELETE /api/companies/{id}/tags[/​{tag_id}]`
+      (`routers/companies.py`), get-or-create by case-insensitive name
+      so re-adding "education" reuses "Education" rather than
+      duplicating. `search_companies` gained a `tag` filter, surfaced as
+      a dropdown in `CompanyFilters.jsx`; tags shown as chips on both
+      the company list and detail page (`TagsSection.jsx`).
+- [x] **Document storage** — new `Document` model, file bytes stored
+      directly in Postgres (`LargeBinary`, deferred-loaded so listing
+      documents doesn't pull file contents into memory) rather than
+      standing up separate file-storage infra. `POST
+      /{company_id}/documents` (upload), `GET /api/documents/{id}`
+      (download, streamed), `DELETE /api/documents/{id}`
+      (`routers/documents.py`); `DocumentsSection.jsx` on the company
+      detail page.
+- [x] **Proposal Tracker** — new `Proposal` model with its own stage
+      enum (Requested → Drafting → Sent → Approved/Rejected), separate
+      from the company's overall lead `status` since a company can have
+      several proposals over time. `POST /{company_id}/proposals`,
+      `PATCH/DELETE /api/proposals/{id}` (`routers/proposals.py`);
+      `ProposalsSection.jsx` (add + inline stage dropdown) on the
+      company detail page. Stage changes are activity-logged.
+- [x] **Activity Timeline** — `CompanyDetail` now embeds that company's
+      own `activity_logs` (full history, not just the dashboard's
+      system-wide latest-20), rendered as `ActivityTimeline.jsx` on the
+      company detail page. Fixed a same-second ordering bug found while
+      verifying this live: SQLite/Postgres `created_at` ties (multiple
+      events in the same second, common when several actions fire back
+      to back) weren't deterministically newest-first without a
+      secondary `id DESC` sort key - added to both the `ActivityLog`
+      relationship ordering and `crud.get_recent_activity`.
+
+**Verified:** 21 new backend pytest cases (tags incl. case-insensitive
+reuse and company filtering, document upload/download/delete incl.
+cascade-delete with the company, proposal CRUD and stage-change activity
+logging, NGO profile seed/update/settings-sync incl. its effect on live
+lead scoring — 95 total for the backend now) — all passing. Also
+exercised live against the real dev stack (Vite proxy → FastAPI →
+SQLite): tag create/attach/detach/filter, document upload+download with
+byte-for-byte content verification, proposal stage transitions, and NGO
+profile edits changing a newly-created company's lead score, all
+confirmed over real HTTP. `npm run build` and `oxlint` clean on the
+frontend.
 
 ## Phase 6 — Final Testing & Deployment — ⬜ Not started
 

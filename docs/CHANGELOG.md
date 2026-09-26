@@ -3,6 +3,43 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## 2026-09-26
+
+### Added — `feat: add NGO profile, tags, documents, and proposal tracker (Phase 5)`
+
+- `NGOProfile` model (single row, `backend/app/models.py`), replacing
+  the env-only `NGO_*` settings as the thing NGO staff actually edit.
+  `GET/PATCH /api/ngo-profile`; every read/write mirrors the row onto
+  the live `settings` object (`crud.py`'s `_sync_settings_from_ngo_profile`)
+  so `scoring.py` and `ai.py` pick up profile edits immediately without
+  a db session threaded through either module, and re-syncs from the DB
+  on app startup so edits survive a restart.
+- `Tag` model + `company_tags` many-to-many association: reusable,
+  get-or-create by case-insensitive name, filterable on the company
+  list (`GET /api/companies?tag=...`), managed via `/api/tags` and
+  `/api/companies/{id}/tags[/​{tag_id}]`.
+- `Document` model: file bytes stored directly in Postgres
+  (`LargeBinary`, deferred-loaded so listing documents doesn't pull
+  file contents into memory) - no separate file-storage infra needed.
+  Upload/download/delete via `routers/documents.py`.
+- `Proposal` model with its own stage pipeline (Requested → Drafting →
+  Sent → Approved/Rejected), separate from the company's overall lead
+  `status` since a company can have several proposals over time; stage
+  changes are activity-logged.
+- `CompanyDetail` now embeds the company's own `activity_logs` (full
+  per-company history), rendered as a timeline on the Company Detail
+  page. Fixed a same-second activity-ordering bug found while verifying
+  this live - added an `id DESC` tiebreaker alongside `created_at DESC`.
+- Frontend: `NGOProfilePage.jsx` (new `/ngo-profile` route, linked from
+  the nav), `TagsSection.jsx`, `DocumentsSection.jsx`,
+  `ProposalsSection.jsx`, `ActivityTimeline.jsx` on the Company Detail
+  page; tag chips + a tag filter dropdown on the Companies page.
+- 21 new pytest cases; full backend suite now 95/95 passing. Verified
+  live against the real dev stack (Vite proxy → FastAPI → SQLite),
+  including byte-for-byte document round-tripping and an NGO profile
+  edit changing a newly-created company's lead score. `npm run build`
+  and `oxlint` clean.
+
 ## 2026-09-25
 
 ### Added — `feat: add outreach dashboard, activity feed, and CSV import/export (Phase 4)`
