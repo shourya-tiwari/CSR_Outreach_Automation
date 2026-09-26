@@ -304,11 +304,37 @@ frontend.
 - [x] **Write a one-page user guide for non-technical staff** —
       [`USER_GUIDE.md`](USER_GUIDE.md).
 
-**Verified:** `pytest -q` → 107/107 passing. `npm run build` and
+**Verified:** `pytest -q` → 110/110 passing. `npm run build` and
 `npm run lint` (oxlint) clean on the frontend after the `client.js`
 change. `backend/scripts/seed_demo_data.py` and `load_test.py` both run
 end-to-end (against a scratch SQLite database, cleaned up afterward —
 no changes to any real database).
+
+**Full-phase re-verification (2026-09-26):** every phase was re-exercised
+against a live backend over real HTTP (not just through the pytest
+dependency override) — 54 endpoint-level checks covering Phase 1 CRUD/
+search, Phase 2 duplicate-detection/scrape/enrich, Phase 3 scoring and
+all four AI endpoints, Phase 4 dashboard/follow-ups/activity/CSV, Phase 5
+tags/documents/proposals/NGO-profile/timeline, and Phase 6's validation
+caps. The frontend was re-checked too: `npm run build` + `oxlint` clean,
+every path in `src/api/client.js` maps to a real backend route, and every
+field the Dashboard and Company Detail pages read exists in the live
+payloads. Three defects were found and fixed — see the 2026-09-26 (3)
+entry in [`CHANGELOG.md`](CHANGELOG.md):
+
+- CSV export → import silently dropped `status`, `last_contacted_date`
+  and `follow_up_date` (the export writes them; `CompanyCreate` had no
+  such fields, so re-importing an edited export reset every company to
+  "New"). Now round-trips intact.
+- `POST /api/companies` silently swallowed an invalid `status` and stored
+  "New" instead of rejecting it; now `422`.
+- `scripts/seed_demo_data.py` crashed on a fresh database (no table
+  creation) — the exact case its docstring advertises. Now creates
+  tables first.
+
+The load-test numbers below were also re-confirmed on the current code
+(3,000 companies: default list 43ms, filters 18-24ms, full CSV export
+237ms, dashboard 24ms).
 
 ---
 

@@ -82,9 +82,10 @@ formula + LLM-written explanation**, not a fully LLM-driven score.
 
 ## Phase 6 — Final Testing & Deployment 🟡 In progress
 
-- [x] Expand automated tests as features grow (107 backend tests now,
+- [x] Expand automated tests as features grow (110 backend tests now,
       up from 95 — added validation/edge-case coverage found while
-      preparing for larger-volume use)
+      preparing for larger-volume use, plus CSV round-trip regression
+      tests from the full-phase re-verification)
 - [x] Test with real company data at larger volume (`backend/scripts/
       load_test.py` — see results in `TASKS.md`; caveat: run against
       SQLite, not the production Postgres target, since no live

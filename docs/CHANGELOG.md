@@ -3,6 +3,37 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## 2026-09-26 (3)
+
+### Fixed — `fix: preserve outreach fields on CSV import, seed on a fresh DB`
+
+Found by re-verifying every phase end-to-end against a live backend
+(all six phases exercised over real HTTP, not just via the test suite).
+
+- **CSV export/import round-trip silently dropped outreach state.** The
+  export writes `status`, `last_contacted_date` and `follow_up_date`
+  (`_CSV_COLUMNS`), but the import builds rows through `CompanyCreate`,
+  which had none of those fields — so exporting the company list,
+  editing it in Excel and re-importing reset every company to "New"
+  with no dates, reporting `errors: []` as if it had worked. The three
+  fields are now part of `CompanyCreate`, so the round-trip preserves
+  them.
+- **Invalid `status` was silently swallowed on company create.** Because
+  `CompanyCreate` had no `status` field, `POST /api/companies` accepted
+  `{"status": "Nonsense"}` with `201` and quietly stored "New" instead.
+  It now returns `422`, matching the existing behaviour of the status
+  *filter* and *update* paths. A valid status is accepted at create time
+  (which is what makes the CSV round-trip above work).
+- **`scripts/seed_demo_data.py` crashed on a fresh database** with
+  `no such table: companies`. Table creation only happened in the app's
+  FastAPI lifespan, so the script worked only against a database the app
+  had already booted against — not against the freshly provisioned
+  Postgres its own docstring points it at. It now calls
+  `Base.metadata.create_all` first, like `load_test.py` already did.
+- 3 new regression tests in `backend/tests/test_csv.py` (round-trip
+  preservation, invalid status as a per-row import error, status
+  accepted/validated at create). 110/110 backend tests passing.
+
 ## 2026-09-26 (2)
 
 ### Added — `feat: harden validation/uploads and prepare deployment (Phase 6)`
