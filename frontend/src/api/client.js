@@ -1,4 +1,10 @@
-const BASE_URL = "/api";
+// In local dev this is left unset, so requests go to relative "/api" and
+// hit the Vite proxy (see vite.config.js). In production the frontend and
+// backend are deployed separately (Vercel + Render) with no shared proxy,
+// so VITE_API_BASE_URL must be set to the deployed backend's origin - see
+// docs/DEPLOYMENT.md.
+const API_ROOT = import.meta.env.VITE_API_BASE_URL || "";
+const BASE_URL = `${API_ROOT}/api`;
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {

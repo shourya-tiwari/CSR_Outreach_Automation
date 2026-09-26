@@ -1,0 +1,41 @@
+# Render Blueprint for the backend API only. The database is intentionally
+# NOT defined here as a Render Postgres instance - per docs/PROJECT_OVERVIEW.md
+# the intended path is a free managed Postgres elsewhere (Neon or Supabase);
+# point DATABASE_URL at that instead. See docs/DEPLOYMENT.md for the full
+# step-by-step.
+#
+# Usage: in the Render dashboard, "New +" -> "Blueprint", point it at this
+# repo. Render reads this file and proposes the service below; fill in the
+# "sync: false" env vars (they're secrets/deploy-specific, not stored here).
+services:
+  - type: web
+    name: csr-outreach-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: NGO_NAME
+        sync: false
+      - key: NGO_WORK_AREA
+        sync: false
+      - key: NGO_FOCUS_AREAS
+        sync: false
+      - key: NGO_CITY
+        sync: false
+      - key: NGO_STATE
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: HUNTER_API_KEY
+        sync: false
+      - key: APOLLO_API_KEY
+        sync: false
