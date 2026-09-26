@@ -14,11 +14,13 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
+    Table,
     Text,
     func,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import deferred, relationship
 
 from .database import Base
 
@@ -31,6 +33,22 @@ class LeadStatus(str, enum.Enum):
     PROPOSAL_SENT = "Proposal Sent"
     SUCCESSFUL = "Successful"
     NOT_INTERESTED = "Not Interested"
+
+
+class ProposalStage(str, enum.Enum):
+    REQUESTED = "Requested"
+    DRAFTING = "Drafting"
+    SENT = "Sent"
+    APPROVED = "Approved"
+    REJECTED = "Rejected"
+
+
+company_tags = Table(
+    "company_tags",
+    Base.metadata,
+    Column("company_id", Integer, ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class Company(Base):
@@ -64,7 +82,20 @@ class Company(Base):
         "ActivityLog",
         back_populates="company",
         cascade="all, delete-orphan",
-        order_by="ActivityLog.created_at.desc()",
+        order_by="ActivityLog.created_at.desc(), ActivityLog.id.desc()",
+    )
+    tags = relationship("Tag", secondary=company_tags, order_by="Tag.name", back_populates="companies")
+    documents = relationship(
+        "Document",
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="Document.uploaded_at.desc()",
+    )
+    proposals = relationship(
+        "Proposal",
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="Proposal.created_at.desc()",
     )
 
 
@@ -115,3 +146,84 @@ class ActivityLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     company = relationship("Company", back_populates="activity_logs")
+
+
+class Tag(Base):
+    """Reusable free-form label (Phase 5), e.g. "Education", "High
+    Priority" - created on first use via crud.get_or_create_tag, shared
+    across companies via the company_tags association table.
+    """
+
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(60), unique=True, nullable=False, index=True)
+
+    companies = relationship("Company", secondary=company_tags, back_populates="tags")
+
+
+class Document(Base):
+    """An uploaded file (proposal, CSR report, MoU, receipt, ...) for a
+    company (Phase 5). Stored directly in the database (LargeBinary) -
+    simplest option at this tool's scale, no separate file-storage
+    infra needed. `data` is deferred so listing documents (metadata
+    only) doesn't pull file bytes into memory.
+    """
+
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(120))
+    size = Column(Integer, nullable=False)
+    data = deferred(Column(LargeBinary, nullable=False))
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    company = relationship("Company", back_populates="documents")
+
+
+class Proposal(Base):
+    """A CSR proposal tracked through its own stage pipeline (Phase 5),
+    distinct from the company's overall lead `status` - a company can
+    have multiple proposals over time (different projects/years).
+    """
+
+    __tablename__ = "proposals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    title = Column(String(255), nullable=False)
+    amount = Column(Float, nullable=True)
+    stage = Column(Enum(ProposalStage), nullable=False, default=ProposalStage.REQUESTED, index=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    company = relationship("Company", back_populates="proposals")
+
+
+class NGOProfile(Base):
+    """Single-row (id=1) editable NGO profile (Phase 5), replacing the
+    env-only NGO_* settings as the source of truth for lead scoring's
+    location/focus match and AI-generated content. See
+    crud.get_ngo_profile / crud.update_ngo_profile: the row is
+    seeded from app.config.settings on first access, and every update
+    is mirrored back onto the live `settings` object so scoring.py and
+    ai.py (which read `settings.ngo_*`) pick up edits immediately
+    without needing a db session threaded through them.
+    """
+
+    __tablename__ = "ngo_profile"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    work_area = Column(String(255))
+    focus_areas = Column(String(500))
+    city = Column(String(120))
+    state = Column(String(120))
+    contact_email = Column(String(255))
+    contact_phone = Column(String(50))
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

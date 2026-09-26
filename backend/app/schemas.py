@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from .models import LeadStatus
+from .models import LeadStatus, ProposalStage
 
 
 # ----------------------------------------------------------------------------
@@ -101,6 +101,87 @@ class ContactOut(ContactBase):
 
 
 # ----------------------------------------------------------------------------
+# Tags (Phase 5)
+# ----------------------------------------------------------------------------
+class TagOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
+class TagCreate(BaseModel):
+    name: str
+
+
+# ----------------------------------------------------------------------------
+# Documents (Phase 5)
+# ----------------------------------------------------------------------------
+class DocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    filename: str
+    content_type: Optional[str] = None
+    size: int
+    uploaded_at: datetime
+
+
+# ----------------------------------------------------------------------------
+# Proposals (Phase 5)
+# ----------------------------------------------------------------------------
+class ProposalCreate(BaseModel):
+    title: str
+    amount: Optional[float] = None
+    stage: ProposalStage = ProposalStage.REQUESTED
+
+
+class ProposalUpdate(BaseModel):
+    title: Optional[str] = None
+    amount: Optional[float] = None
+    stage: Optional[ProposalStage] = None
+
+
+class ProposalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    title: str
+    amount: Optional[float] = None
+    stage: ProposalStage
+    created_at: datetime
+    updated_at: datetime
+
+
+# ----------------------------------------------------------------------------
+# NGO Profile (Phase 5)
+# ----------------------------------------------------------------------------
+class NGOProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    work_area: Optional[str] = None
+    focus_areas: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    updated_at: datetime
+
+
+class NGOProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    work_area: Optional[str] = None
+    focus_areas: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+
+
+# ----------------------------------------------------------------------------
 # Note
 # ----------------------------------------------------------------------------
 class NoteCreate(BaseModel):
@@ -158,6 +239,16 @@ class CompanyListItem(CompanyBase):
     follow_up_date: Optional[date] = None
     contact_count: int = 0
     lead_score: Optional[LeadScore] = None
+    tags: list[TagOut] = []
+
+
+class CompanyActivityItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_type: str
+    description: str
+    created_at: datetime
 
 
 class CompanyDetail(CompanyBase):
@@ -172,6 +263,10 @@ class CompanyDetail(CompanyBase):
     contacts: list[ContactOut] = []
     notes: list[NoteOut] = []
     lead_score: Optional[LeadScore] = None
+    tags: list[TagOut] = []
+    documents: list[DocumentOut] = []
+    proposals: list[ProposalOut] = []
+    activity_logs: list[CompanyActivityItem] = []
 
 
 # ----------------------------------------------------------------------------
