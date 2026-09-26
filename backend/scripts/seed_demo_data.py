@@ -17,8 +17,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import crud, schemas
-from app.database import SessionLocal
+from app import crud, models, schemas  # noqa: F401 - models registers tables on Base.metadata
+from app.database import Base, SessionLocal, engine
 
 COMPANIES = [
     dict(
@@ -147,6 +147,13 @@ TAGS_BY_COMPANY = {
 
 
 def main():
+    # The app normally creates tables on startup (see app/main.py's lifespan).
+    # This script talks to the DB directly, so on a database the app has never
+    # booted against - a freshly provisioned Neon/Postgres instance, which is
+    # exactly when you want demo data - seeding would otherwise die with
+    # "no such table: companies".
+    Base.metadata.create_all(bind=engine)
+
     db = SessionLocal()
     created = 0
     skipped = 0
