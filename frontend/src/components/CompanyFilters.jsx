@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { listTags } from "../api/client";
 import { LEAD_STATUSES } from "../constants";
 
 const FIELDS = [
@@ -18,6 +19,11 @@ const OPTIONAL_FIELDS = [
 
 export default function CompanyFilters({ filters, onChange, onReset }) {
   const [showOptional, setShowOptional] = useState(false);
+  const [tags, setTags] = useState([]);
+
+  useEffect(() => {
+    listTags().then(setTags).catch(() => {});
+  }, []);
 
   const handleField = (key) => (event) => {
     onChange({ ...filters, [key]: event.target.value });
@@ -82,6 +88,24 @@ export default function CompanyFilters({ filters, onChange, onReset }) {
             placeholder="e.g. 10000000"
           />
         </div>
+
+        {tags.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Tag</label>
+            <select
+              value={filters.tag ?? ""}
+              onChange={handleField("tag")}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <option value="">Any tag</option>
+              {tags.map((t) => (
+                <option key={t.id} value={t.name}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="mt-3">

@@ -25,6 +25,25 @@ async function request(path, options = {}) {
   return response.json();
 }
 
+async function requestFormData(path, formData, { method = "POST" } = {}) {
+  const response = await fetch(`${BASE_URL}${path}`, { method, body: formData });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      detail = (await response.json()).detail ?? detail;
+    } catch {
+      // no JSON body
+    }
+    const message = typeof detail === "string" ? detail : (detail?.message ?? response.statusText);
+    const error = new Error(message);
+    error.status = response.status;
+    error.detail = detail;
+    throw error;
+  }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
 export function listCompanies(filters = {}) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
@@ -121,21 +140,72 @@ export function exportCompaniesUrl(filters = {}) {
   return `${BASE_URL}/companies/export${query ? `?${query}` : ""}`;
 }
 
-export async function importCompaniesCsv(file) {
+export function importCompaniesCsv(file) {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await fetch(`${BASE_URL}/companies/import`, {
+  return requestFormData("/companies/import", formData);
+}
+
+// ----------------------------------------------------------------------------
+// Tags (Phase 5)
+// ----------------------------------------------------------------------------
+export function listTags() {
+  return request("/tags");
+}
+
+export function addTagToCompany(companyId, name) {
+  return request(`/companies/${companyId}/tags`, {
     method: "POST",
-    body: formData,
+    body: JSON.stringify({ name }),
   });
-  if (!response.ok) {
-    let detail = response.statusText;
-    try {
-      detail = (await response.json()).detail ?? detail;
-    } catch {
-      // no JSON body
-    }
-    throw new Error(typeof detail === "string" ? detail : response.statusText);
-  }
-  return response.json();
+}
+
+export function removeTagFromCompany(companyId, tagId) {
+  return request(`/companies/${companyId}/tags/${tagId}`, { method: "DELETE" });
+}
+
+// ----------------------------------------------------------------------------
+// Documents (Phase 5)
+// ----------------------------------------------------------------------------
+export function uploadDocument(companyId, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return requestFormData(`/companies/${companyId}/documents`, formData);
+}
+
+export function documentDownloadUrl(documentId) {
+  return `${BASE_URL}/documents/${documentId}`;
+}
+
+export function deleteDocument(documentId) {
+  return request(`/documents/${documentId}`, { method: "DELETE" });
+}
+
+// ----------------------------------------------------------------------------
+// Proposals (Phase 5)
+// ----------------------------------------------------------------------------
+export function addProposal(companyId, payload) {
+  return request(`/companies/${companyId}/proposals`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateProposal(proposalId, payload) {
+  return request(`/proposals/${proposalId}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export function deleteProposal(proposalId) {
+  return request(`/proposals/${proposalId}`, { method: "DELETE" });
+}
+
+// ----------------------------------------------------------------------------
+// NGO Profile (Phase 5)
+// ----------------------------------------------------------------------------
+export function getNgoProfile() {
+  return request("/ngo-profile");
+}
+
+export function updateNgoProfile(payload) {
+  return request("/ngo-profile", { method: "PATCH", body: JSON.stringify(payload) });
 }

@@ -2,6 +2,7 @@ import { NavLink, Routes, Route } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import CompaniesPage from "./pages/CompaniesPage";
 import CompanyDetailPage from "./pages/CompanyDetailPage";
+import NGOProfilePage from "./pages/NGOProfilePage";
 
 const NAV_LINK_CLASS = ({ isActive }) =>
   `text-sm font-medium ${isActive ? "text-emerald-700" : "text-slate-500 hover:text-slate-700"}`;
@@ -21,6 +22,9 @@ export default function App() {
           <NavLink to="/companies" className={NAV_LINK_CLASS}>
             Companies
           </NavLink>
+          <NavLink to="/ngo-profile" className={NAV_LINK_CLASS}>
+            NGO Profile
+          </NavLink>
         </div>
       </nav>
 
@@ -28,6 +32,7 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/companies" element={<CompaniesPage />} />
         <Route path="/companies/:id" element={<CompanyDetailPage />} />
+        <Route path="/ngo-profile" element={<NGOProfilePage />} />
       </Routes>
     </div>
   );

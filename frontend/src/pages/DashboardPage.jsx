@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getDashboard } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
+import { timeAgo } from "../utils/time";
 
 const KPI_TILES = [
   { key: "total_companies", label: "Total Companies" },
@@ -36,17 +37,6 @@ function FollowUpList({ items, emptyLabel, dateClass }) {
       ))}
     </ul>
   );
-}
-
-function timeAgo(isoString) {
-  const seconds = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 export default function DashboardPage() {

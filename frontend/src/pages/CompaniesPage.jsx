@@ -148,6 +148,7 @@ export default function CompaniesPage() {
               <th className="px-4 py-3">Industry</th>
               <th className="px-4 py-3">Location</th>
               <th className="px-4 py-3">CSR focus</th>
+              <th className="px-4 py-3">Tags</th>
               <th className="px-4 py-3">Contacts</th>
               <th className="px-4 py-3">Lead Score</th>
               <th className="px-4 py-3">Status</th>
@@ -156,14 +157,14 @@ export default function CompaniesPage() {
           <tbody className="divide-y divide-slate-100">
             {loading && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                   Loading…
                 </td>
               </tr>
             )}
             {!loading && companies.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
                   No companies match these filters yet.
                 </td>
               </tr>
@@ -187,6 +188,20 @@ export default function CompaniesPage() {
                     {[company.city, company.state].filter(Boolean).join(", ") || "—"}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{company.csr_focus || "—"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {company.tags.length === 0
+                        ? "—"
+                        : company.tags.map((t) => (
+                            <span
+                              key={t.id}
+                              className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+                            >
+                              {t.name}
+                            </span>
+                          ))}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{company.contact_count}</td>
                   <td className="px-4 py-3">
                     {company.lead_score ? (

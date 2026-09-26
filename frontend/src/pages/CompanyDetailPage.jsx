@@ -8,6 +8,10 @@ import NotesSection from "../components/NotesSection";
 import DiscoverContactsPanel from "../components/DiscoverContactsPanel";
 import LeadScoreBadge from "../components/LeadScoreBadge";
 import AIPanel from "../components/AIPanel";
+import TagsSection from "../components/TagsSection";
+import DocumentsSection from "../components/DocumentsSection";
+import ProposalsSection from "../components/ProposalsSection";
+import ActivityTimeline from "../components/ActivityTimeline";
 
 export default function CompanyDetailPage() {
   const { id } = useParams();
@@ -76,6 +80,9 @@ export default function CompanyDetailPage() {
           <div className="mt-2">
             <LeadScoreBadge companyId={company.id} leadScore={company.lead_score} />
           </div>
+          <div className="mt-3">
+            <TagsSection companyId={company.id} tags={company.tags} onChanged={refresh} />
+          </div>
         </div>
         <button
           type="button"
@@ -107,10 +114,13 @@ export default function CompanyDetailPage() {
           <ContactsSection companyId={company.id} contacts={company.contacts} onChanged={refresh} />
           <DiscoverContactsPanel company={company} onChanged={refresh} />
           <NotesSection companyId={company.id} notes={company.notes} onChanged={refresh} />
+          <ProposalsSection companyId={company.id} proposals={company.proposals} onChanged={refresh} />
+          <DocumentsSection companyId={company.id} documents={company.documents} onChanged={refresh} />
         </div>
         <div className="space-y-6">
           <StatusPanel company={company} onUpdated={setCompany} />
           <AIPanel company={company} />
+          <ActivityTimeline activity={company.activity_logs} />
         </div>
       </div>
     </div>
