@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
 
+    # Phase 6: upload caps, found missing during larger-volume testing -
+    # without these, a single oversized file could exhaust the free-tier
+    # backend's memory or bloat the Postgres row unbounded.
+    max_document_upload_bytes: int = 10 * 1024 * 1024  # 10 MB
+    max_csv_import_bytes: int = 5 * 1024 * 1024  # 5 MB
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

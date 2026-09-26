@@ -4,11 +4,12 @@ import csv
 import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
+from ..config import settings
 from ..database import get_db
 from ..scoring import compute_lead_score
 
@@ -60,8 +61,8 @@ def list_companies(
     min_employees: Optional[int] = None,
     max_employees: Optional[int] = None,
     tag: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     companies = crud.search_companies(
@@ -187,7 +188,13 @@ async def import_companies(file: UploadFile, db: Session = Depends(get_db)):
     erroring the whole upload - same "review, don't silently clobber"
     principle as the single-company duplicate-detection flow.
     """
-    raw = (await file.read()).decode("utf-8-sig")
+    raw_bytes = await file.read()
+    if len(raw_bytes) > settings.max_csv_import_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"CSV file too large (max {settings.max_csv_import_bytes // (1024 * 1024)} MB)",
+        )
+    raw = raw_bytes.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(raw))
     result = crud.import_companies_from_rows(db, list(reader))
     return schemas.ImportResult(**result)
@@ -244,6 +251,11 @@ def remove_tag(company_id: int, tag_id: int, db: Session = Depends(get_db)):
 async def upload_document(company_id: int, file: UploadFile, db: Session = Depends(get_db)):
     _get_company_or_404(db, company_id)
     data = await file.read()
+    if len(data) > settings.max_document_upload_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {settings.max_document_upload_bytes // (1024 * 1024)} MB)",
+        )
     return crud.add_document(db, company_id, file.filename, file.content_type, data)
 
 

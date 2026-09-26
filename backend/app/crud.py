@@ -4,6 +4,7 @@ import re
 from datetime import date
 from typing import Optional
 
+from pydantic import ValidationError
 from sqlalchemy.orm import Session, joinedload
 
 from . import models, schemas
@@ -351,7 +352,11 @@ def import_companies_from_rows(db: Session, rows: list[dict]) -> dict:
             errors.append(row_error)
             continue
 
-        payload = schemas.CompanyCreate(**data)
+        try:
+            payload = schemas.CompanyCreate(**data)
+        except ValidationError as exc:
+            errors.append(f"Row {i}: {exc.errors()[0]['msg']}, row skipped")
+            continue
         if find_duplicate_company(db, payload.name, payload.website):
             skipped_duplicates += 1
             continue

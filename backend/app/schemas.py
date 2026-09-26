@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .models import LeadStatus, ProposalStage
 
@@ -133,13 +133,13 @@ class DocumentOut(BaseModel):
 # ----------------------------------------------------------------------------
 class ProposalCreate(BaseModel):
     title: str
-    amount: Optional[float] = None
+    amount: Optional[float] = Field(default=None, ge=0)
     stage: ProposalStage = ProposalStage.REQUESTED
 
 
 class ProposalUpdate(BaseModel):
     title: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[float] = Field(default=None, ge=0)
     stage: Optional[ProposalStage] = None
 
 
@@ -207,9 +207,9 @@ class CompanyBase(BaseModel):
     state: Optional[str] = None
     website: Optional[str] = None
     csr_focus: Optional[str] = None
-    csr_spending: Optional[float] = None
-    revenue: Optional[float] = None
-    employee_count: Optional[int] = None
+    csr_spending: Optional[float] = Field(default=None, ge=0)
+    revenue: Optional[float] = Field(default=None, ge=0)
+    employee_count: Optional[int] = Field(default=None, ge=0)
 
 
 class CompanyCreate(CompanyBase):
@@ -223,9 +223,9 @@ class CompanyUpdate(BaseModel):
     state: Optional[str] = None
     website: Optional[str] = None
     csr_focus: Optional[str] = None
-    csr_spending: Optional[float] = None
-    revenue: Optional[float] = None
-    employee_count: Optional[int] = None
+    csr_spending: Optional[float] = Field(default=None, ge=0)
+    revenue: Optional[float] = Field(default=None, ge=0)
+    employee_count: Optional[int] = Field(default=None, ge=0)
     status: Optional[LeadStatus] = None
     last_contacted_date: Optional[date] = None
     follow_up_date: Optional[date] = None
